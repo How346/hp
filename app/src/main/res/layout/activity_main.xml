@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Waiting for printer..."
+        android:textSize="16sp"
+        android:paddingBottom="16dp" />
+
+    <Button
+        android:id="@+id/connectButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Connect to HP LaserJet M1005 (OTG)" />
+
+    <Button
+        android:id="@+id/pickPdfButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pick PDF to Print"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/printButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Print (Test / Ready for Protocol)"
+        android:layout_marginTop="8dp"
+        android:enabled="false" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Note: HP LaserJet M1005 is host-based. This app connects via USB OTG and provides a framework. Actual print data format must be implemented based on reverse-engineered protocol from working apps like NokoPrint."
+        android:textSize="12sp"
+        android:paddingTop="16dp" />
+
+</LinearLayout>
