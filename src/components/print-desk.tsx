@@ -35,6 +35,21 @@ export function PrintDesk() {
   const [status, setStatus] = useState("Turn the printer on and put paper in the tray.");
 
   useEffect(() => {
+    if (!usbAvailable()) return;
+    const usb = (navigator as Navigator & { usb: USB }).usb;
+    const onDisconnect = (rawEvent: Event) => {
+      const event = rawEvent as Event & { device: USBDevice };
+      if (linkRef.current?.device === event.device) {
+        linkRef.current = null;
+        setConnected(false);
+        setStatus("Printer disconnected. Check the OTG cable and reconnect.");
+      }
+    };
+    usb.addEventListener("disconnect", onDisconnect);
+    return () => usb.removeEventListener("disconnect", onDisconnect);
+  }, []);
+
+  useEffect(() => {
     let cancel = false;
     const paint = async () => {
       if (document.fonts?.ready) await document.fonts.ready;
@@ -147,6 +162,10 @@ export function PrintDesk() {
       }
       setStatus("Sent. The M1005 should pull a sheet now.");
     } catch (error) {
+      if (linkRef.current && !linkRef.current.device.opened) {
+        linkRef.current = null;
+        setConnected(false);
+      }
       setStatus(error instanceof Error ? error.message : "Print failed");
     } finally {
       setBusy(false);

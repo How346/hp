@@ -16,6 +16,8 @@ public final class UsbLink implements AutoCloseable {
     private final UsbDeviceConnection connection;
     private final UsbInterface iface;
     private final UsbEndpoint out;
+    private volatile boolean open = true;
+    private volatile boolean released;
 
     private UsbLink(UsbDevice device, UsbDeviceConnection connection, UsbInterface iface, UsbEndpoint out) {
         this.device = device;
@@ -78,21 +80,30 @@ public final class UsbLink implements AutoCloseable {
         return "HP LaserJet M1005  (" + device.getDeviceName() + ")";
     }
 
-    public void write(byte[] data) throws IOException {
+    public boolean isOpen() { return open; }
+
+    public int deviceId() { return device.getDeviceId(); }
+
+    public synchronized void write(byte[] data) throws IOException {
+        if (!open) throw new IOException("Printer connection is closed. Reconnect the USB cable.");
         int offset = 0;
         while (offset < data.length) {
             int length = Math.min(16384, data.length - offset);
             int sent = connection.bulkTransfer(out, data, offset, length, 30000);
             if (sent <= 0) {
+                open = false;
                 throw new IOException("USB transfer failed at byte " + offset + " of " + data.length
-                        + ". Check the OTG adapter, printer power, paper, and USB permission, then reconnect.");
+                        + ". Check OTG, printer power and paper, then reconnect.");
             }
             offset += sent;
         }
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (released) return;
+        released = true;
+        open = false;
         try {
             connection.releaseInterface(iface);
         } catch (RuntimeException ignored) {

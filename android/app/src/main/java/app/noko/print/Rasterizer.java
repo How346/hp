@@ -30,18 +30,22 @@ public final class Rasterizer {
         }
     }
 
-    public static byte[] testPage(Paper paper) {
-        int width = paper.widthPx();
-        int height = paper.heightPx();
+    public static byte[] testPage(Paper paper) { return testPage(paper, false); }
+
+    public static byte[] testPage(Paper paper, boolean landscape) {
+        int width = paper.widthPx(landscape);
+        int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
         byte[] bits = new byte[stride * height];
         drawStrips(width, height, bits, stride, (canvas, w, h) -> drawTest(canvas, w, h));
         return bits;
     }
 
-    public static byte[] textPage(String text, Paper paper) {
-        int width = paper.widthPx();
-        int height = paper.heightPx();
+    public static byte[] textPage(String text, Paper paper) { return textPage(text, paper, false); }
+
+    public static byte[] textPage(String text, Paper paper, boolean landscape) {
+        int width = paper.widthPx(landscape);
+        int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
         byte[] bits = new byte[stride * height];
         int margin = Math.round(width * 0.07f);
@@ -60,9 +64,11 @@ public final class Rasterizer {
         return bits;
     }
 
-    public static byte[] imagePage(Bitmap source, Paper paper) {
-        int width = paper.widthPx();
-        int height = paper.heightPx();
+    public static byte[] imagePage(Bitmap source, Paper paper) { return imagePage(source, paper, false); }
+
+    public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape) {
+        int width = paper.widthPx(landscape);
+        int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
         byte[] bits = new byte[stride * height];
         drawStrips(width, height, bits, stride, (canvas, w, h) -> {
@@ -79,9 +85,11 @@ public final class Rasterizer {
         return bits;
     }
 
-    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper) {
-        int width = paper.widthPx();
-        int height = paper.heightPx();
+    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper) { return pdfPage(renderer, index, paper, false); }
+
+    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper, boolean landscape) {
+        int width = paper.widthPx(landscape);
+        int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
         byte[] bits = new byte[stride * height];
         PdfRenderer.Page page = renderer.openPage(index);
@@ -94,10 +102,13 @@ public final class Rasterizer {
                     int rows = Math.min(stripH, height - y);
                     strip.eraseColor(Color.WHITE);
                     Matrix matrix = new Matrix();
-                    float sx = width / (float) page.getWidth();
-                    float sy = height / (float) page.getHeight();
-                    matrix.setScale(sx, sy);
-                    matrix.postTranslate(0f, -y);
+                    float sx = (width * 0.94f) / (float) page.getWidth();
+                    float sy = (height * 0.94f) / (float) page.getHeight();
+                    float scale = Math.min(sx, sy);
+                    float offsetX = (width - page.getWidth() * scale) / 2f;
+                    float offsetY = (height - page.getHeight() * scale) / 2f;
+                    matrix.setScale(scale, scale);
+                    matrix.postTranslate(offsetX, offsetY - y);
                     page.render(strip, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
                     pack(strip, rows, y, width, height, stride, bits, row);
                 }

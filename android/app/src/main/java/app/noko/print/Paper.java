@@ -20,12 +20,18 @@ public enum Paper {
         this.heightMm = heightMm;
     }
 
-    public int widthPx() {
-        return (int) Math.round(widthMm / 25.4 * DPI);
+    public int widthPx() { return widthPx(false); }
+
+    public int heightPx() { return heightPx(false); }
+
+    public int widthPx(boolean landscape) {
+        double mm = landscape ? heightMm : widthMm;
+        return (int) Math.round(mm / 25.4 * DPI);
     }
 
-    public int heightPx() {
-        return (int) Math.round(heightMm / 25.4 * DPI);
+    public int heightPx(boolean landscape) {
+        double mm = landscape ? widthMm : heightMm;
+        return (int) Math.round(mm / 25.4 * DPI);
     }
 
     public static int stride(int width) {
