@@ -1,7 +1,14 @@
 import { DPI, paperPixels, rowStride, type Paper } from "@/lib/print/papers";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-const THRESHOLD = 176;
+// The M1005 is a 1-bit monochrome engine. Floyd–Steinberg error diffusion
+// preserves light-grey fills, shaded table cells and anti-aliased text as a
+// printable halftone instead of dropping everything lighter than one cutoff.
+type DitherState = { current: Float32Array; next: Float32Array };
+
+function createDitherState(width: number): DitherState {
+  return { current: new Float32Array(width + 2), next: new Float32Array(width + 2) };
+}
 
 export type PackedPage = {
   bits: Uint8Array;
@@ -10,15 +17,37 @@ export type PackedPage = {
   stride: number;
 };
 
-function packStrip(image: ImageData, bits: Uint8Array, y: number, width: number, stride: number) {
+function packStrip(
+  image: ImageData,
+  bits: Uint8Array,
+  y: number,
+  width: number,
+  stride: number,
+  dither: DitherState,
+) {
   const src = image.data;
   for (let row = 0; row < image.height; row++) {
     const base = (y + row) * stride;
     for (let x = 0; x < width; x++) {
       const i = (row * width + x) * 4;
-      const luma = (src[i] * 54 + src[i + 1] * 183 + src[i + 2] * 19) >> 8;
-      if (luma < THRESHOLD) bits[base + (x >> 3)] |= 0x80 >> (x & 7);
+      // Composite transparency onto white before converting to luminance.
+      const alpha = src[i + 3] / 255;
+      const r = src[i] * alpha + 255 * (1 - alpha);
+      const g = src[i + 1] * alpha + 255 * (1 - alpha);
+      const b = src[i + 2] * alpha + 255 * (1 - alpha);
+      const luma = (r * 54 + g * 183 + b * 19) / 256;
+      const adjusted = Math.max(0, Math.min(255, luma + dither.current[x + 1]));
+      const black = adjusted < 128;
+      if (black) bits[base + (x >> 3)] |= 0x80 >> (x & 7);
+      const error = adjusted - (black ? 0 : 255);
+      // Floyd–Steinberg: distribute tonal error to neighbouring pixels.
+      dither.current[x + 2] += error * (7 / 16);
+      dither.next[x] += error * (3 / 16);
+      dither.next[x + 1] += error * (5 / 16);
+      dither.next[x + 2] += error * (1 / 16);
     }
+    dither.current.set(dither.next);
+    dither.next.fill(0);
   }
 }
 
@@ -33,6 +62,7 @@ export async function rasterizeDraw(
 ): Promise<PackedPage> {
   const stride = rowStride(width);
   const bits = new Uint8Array(stride * height);
+  const dither = createDitherState(width);
   const stripH = 80;
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -46,7 +76,7 @@ export async function rasterizeDraw(
     ctx.fillRect(0, 0, width, stripH);
     ctx.setTransform(1, 0, 0, 1, 0, -y);
     draw(ctx, width, height);
-    packStrip(ctx.getImageData(0, 0, width, rows), bits, y, width, stride);
+    packStrip(ctx.getImageData(0, 0, width, rows), bits, y, width, stride, dither);
     if (y % (stripH * 6) === 0) await yieldFrame();
   }
   return { bits, width, height, stride };
@@ -176,6 +206,7 @@ export async function rasterizePdfPage(data: ArrayBuffer, pageIndex: number, pap
     const oy = (height - dh) / 2;
     const stride = rowStride(width);
     const bits = new Uint8Array(stride * height);
+    const dither = createDitherState(width);
     const stripH = 80;
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -194,7 +225,7 @@ export async function rasterizePdfPage(data: ArrayBuffer, pageIndex: number, pap
         intent: "print",
         background: "#ffffff",
       }).promise;
-      packStrip(ctx.getImageData(0, 0, width, rows), bits, y, width, stride);
+      packStrip(ctx.getImageData(0, 0, width, rows), bits, y, width, stride, dither);
       if (y % (stripH * 6) === 0) await yieldFrame();
     }
     return { bits, width, height, stride };

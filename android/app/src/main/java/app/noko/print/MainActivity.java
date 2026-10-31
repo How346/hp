@@ -67,6 +67,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView copiesView;
     private TextView densityView;
     private Spinner paperSpinner;
+    private Spinner scaleSpinner;
+    private Spinner marginSpinner;
+    private Spinner positionSpinner;
+    private CheckBox collateBox;
     private CheckBox tonerBox;
     private ProgressBar progress;
     private MaterialButton printButton;
@@ -128,6 +132,16 @@ public class MainActivity extends AppCompatActivity {
         densityView = findViewById(R.id.density_label);
         paperSpinner = findViewById(R.id.paper);
         tonerBox = findViewById(R.id.toner);
+        collateBox = findViewById(R.id.collate);
+        scaleSpinner = findViewById(R.id.scale_mode);
+        marginSpinner = findViewById(R.id.margins);
+        positionSpinner = findViewById(R.id.position);
+        scaleSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Fit to page", "Fill page (crop edges)", "Fit width"}));
+        marginSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"No margins", "Narrow", "Normal", "Wide"}));
+        positionSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Center", "Top", "Bottom"}));
         progress = findViewById(R.id.progress);
         printButton = findViewById(R.id.print);
         SeekBar density = findViewById(R.id.density);
@@ -147,6 +161,14 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { refreshPreview(); }
             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
+        android.widget.AdapterView.OnItemSelectedListener previewSettingsListener =
+                new android.widget.AdapterView.OnItemSelectedListener() {
+                    @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { refreshPreview(); }
+                    @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+                };
+        scaleSpinner.setOnItemSelectedListener(previewSettingsListener);
+        marginSpinner.setOnItemSelectedListener(previewSettingsListener);
+        positionSpinner.setOnItemSelectedListener(previewSettingsListener);
         density.setProgress(2);
         density.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -285,9 +307,14 @@ public class MainActivity extends AppCompatActivity {
 
     private int linkDeviceId() { return link == null ? -1 : link.deviceId(); }
 
+    private volatile String lastConnectionLabel = "";
     private void setConnectionState(boolean connected, String message) {
+        final String label = (connected ? "Connected · " : "Not connected · ") + "USB OTG";
         runOnUiThread(() -> {
-            connectionState.setText((connected ? "Connected · " : "Not connected · ") + "USB OTG");
+            if (!label.equals(lastConnectionLabel)) {
+                connectionState.setText(label);
+                lastConnectionLabel = label;
+            }
             say(message);
         });
     }
@@ -298,7 +325,14 @@ public class MainActivity extends AppCompatActivity {
             setConnectionState(true, "Printer connection is stable.");
             return;
         }
-        closeLink();
+        if (link != null && link.isOpen() && link.deviceId() != device.getDeviceId()) {
+            closeLink();
+        }
+        if (link != null && link.isOpen()) {
+            connecting = false;
+            setConnectionState(true, "Printer connection is ready.");
+            return;
+        }
         UsbDeviceConnection connection = usbManager.openDevice(device);
         try {
             link = UsbLink.open(device, connection);
@@ -341,13 +375,18 @@ public class MainActivity extends AppCompatActivity {
         int density = ((SeekBar) findViewById(R.id.density)).getProgress() + 1;
         boolean econo = tonerBox.isChecked();
         int copyCount = copies;
+        int marginMode = marginSpinner.getSelectedItemPosition();
+        int scaleMode = scaleSpinner.getSelectedItemPosition();
+        int positionMode = positionSpinner.getSelectedItemPosition();
+        boolean collate = collateBox.isChecked();
         busy = true;
         progress.setVisibility(View.VISIBLE);
         printButton.setEnabled(false);
         say("Sending the page…");
         jobs.execute(() -> {
             try {
-                runPrint(paper, density, econo, copyCount, landscape, from, to);
+                runPrint(paper, density, econo, copyCount, landscape, from, to,
+                        marginMode, scaleMode, positionMode, collate);
                 say("Sent. The M1005 should pull a sheet now.");
             } catch (Exception e) {
                 if (link == null || !link.isOpen()) setConnectionState(false, e.getMessage() == null ? "Printer connection lost. Reconnect and retry." : e.getMessage());
@@ -362,7 +401,9 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void runPrint(Paper paper, int density, boolean econo, int copyCount, boolean landscape, int fromPage, int toPage) throws IOException {
+    private void runPrint(Paper paper, int density, boolean econo, int copyCount, boolean landscape,
+                          int fromPage, int toPage, int marginMode, int scaleMode,
+                          int positionMode, boolean collate) throws IOException {
         if ("Built-in test page".equals(documentName) && document == null) {
             byte[] bits = Rasterizer.testPage(paper, landscape);
             sendPacked(bits, paper, density, econo, copyCount, landscape);
@@ -377,12 +418,25 @@ public class MainActivity extends AppCompatActivity {
                     int first = Math.max(0, fromPage - 1);
                     int last = Math.min(count - 1, toPage - 1);
                     int selectedCount = last - first + 1;
-                    for (int copy = 0; copy < copyCount; copy++) {
+                    int total = selectedCount * copyCount;
+                    int sent = 0;
+                    if (collate) {
+                        for (int copy = 0; copy < copyCount; copy++) {
+                            for (int i = first; i <= last; i++) {
+                                say("Printing sheet " + (++sent) + " of " + total);
+                                byte[] bits = Rasterizer.pdfPage(renderer, i, paper, landscape,
+                                        marginMode, scaleMode, positionMode);
+                                sendPacked(bits, paper, density, econo, 1, landscape);
+                            }
+                        }
+                    } else {
                         for (int i = first; i <= last; i++) {
-                            int shown = copy * selectedCount + (i - first) + 1;
-                            say("Printing sheet " + shown + " of " + (selectedCount * copyCount));
-                            byte[] bits = Rasterizer.pdfPage(renderer, i, paper, landscape);
-                            sendPacked(bits, paper, density, econo, 1, landscape);
+                            byte[] bits = Rasterizer.pdfPage(renderer, i, paper, landscape,
+                                    marginMode, scaleMode, positionMode);
+                            for (int copy = 0; copy < copyCount; copy++) {
+                                say("Printing sheet " + (++sent) + " of " + total);
+                                sendPacked(bits, paper, density, econo, 1, landscape);
+                            }
                         }
                     }
                 } finally {
@@ -394,7 +448,8 @@ public class MainActivity extends AppCompatActivity {
         if (kind == Kind.IMAGE) {
             Bitmap bitmap = decodeImage(document);
             try {
-                byte[] bits = Rasterizer.imagePage(bitmap, paper, landscape);
+                byte[] bits = Rasterizer.imagePage(bitmap, paper, landscape,
+                        marginMode, scaleMode, positionMode);
                 sendPacked(bits, paper, density, econo, copyCount, landscape);
             } finally {
                 bitmap.recycle();
@@ -490,7 +545,7 @@ public class MainActivity extends AppCompatActivity {
                 for (int i = 0; i < pixels.length; i++) {
                     int c = pixels[i];
                     int lum = (((c >> 16) & 255) * 54 + ((c >> 8) & 255) * 183 + (c & 255) * 19) >> 8;
-                    pixels[i] = lum < 176 ? Color.BLACK : Color.WHITE;
+                    pixels[i] = Color.rgb(lum, lum, lum);
                 }
                 bitmap.setPixels(pixels, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
                 Bitmap ready = bitmap;

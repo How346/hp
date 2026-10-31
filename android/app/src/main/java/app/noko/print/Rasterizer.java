@@ -15,6 +15,11 @@ import android.text.TextPaint;
 import java.io.IOException;
 
 public final class Rasterizer {
+    private static final int[][] BAYER_4X4 = {
+            {0, 8, 2, 10}, {12, 4, 14, 6},
+            {3, 11, 1, 9}, {15, 7, 13, 5}
+    };
+
     public interface Progress {
         void onPage(int index, int count);
     }
@@ -67,18 +72,27 @@ public final class Rasterizer {
     public static byte[] imagePage(Bitmap source, Paper paper) { return imagePage(source, paper, false); }
 
     public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape) {
+        return imagePage(source, paper, landscape, 1, 0, 0);
+    }
+
+    public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape,
+                                   int marginMode, int scaleMode, int positionMode) {
         int width = paper.widthPx(landscape);
         int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
         byte[] bits = new byte[stride * height];
         drawStrips(width, height, bits, stride, (canvas, w, h) -> {
-            float margin = w * 0.05f;
+            float margin = (marginMode == 0 ? 0f : marginMode == 1 ? 0.025f : marginMode == 2 ? 0.05f : 0.08f) * w;
             float maxW = w - margin * 2f;
             float maxH = h - margin * 2f;
-            float scale = Math.min(maxW / source.getWidth(), maxH / source.getHeight());
+            float fit = Math.min(maxW / source.getWidth(), maxH / source.getHeight());
+            float fill = Math.max(maxW / source.getWidth(), maxH / source.getHeight());
+            float scale = scaleMode == 1 ? fill : scaleMode == 2 ? maxW / source.getWidth() : fit;
             float dw = source.getWidth() * scale;
             float dh = source.getHeight() * scale;
-            RectF dest = new RectF(margin + (maxW - dw) / 2f, margin + (maxH - dh) / 2f, margin + (maxW - dw) / 2f + dw, margin + (maxH - dh) / 2f + dh);
+            float left = (w - dw) / 2f;
+            float top = positionMode == 1 ? margin : positionMode == 2 ? h - dh - margin : (h - dh) / 2f;
+            RectF dest = new RectF(left, top, left + dw, top + dh);
             Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
             canvas.drawBitmap(source, null, dest, paint);
         });
@@ -88,6 +102,11 @@ public final class Rasterizer {
     public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper) { return pdfPage(renderer, index, paper, false); }
 
     public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper, boolean landscape) {
+        return pdfPage(renderer, index, paper, landscape, 0, 0, 0);
+    }
+
+    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper, boolean landscape,
+                                 int marginMode, int scaleMode, int positionMode) {
         int width = paper.widthPx(landscape);
         int height = paper.heightPx(landscape);
         int stride = Paper.stride(width);
@@ -102,11 +121,16 @@ public final class Rasterizer {
                     int rows = Math.min(stripH, height - y);
                     strip.eraseColor(Color.WHITE);
                     Matrix matrix = new Matrix();
-                    float sx = (width * 0.94f) / (float) page.getWidth();
-                    float sy = (height * 0.94f) / (float) page.getHeight();
-                    float scale = Math.min(sx, sy);
-                    float offsetX = (width - page.getWidth() * scale) / 2f;
-                    float offsetY = (height - page.getHeight() * scale) / 2f;
+                    float margin = marginMode == 0 ? 0.0f : marginMode == 1 ? 0.025f : marginMode == 2 ? 0.05f : 0.08f;
+                    float availableW = width * (1f - 2f * margin);
+                    float availableH = height * (1f - 2f * margin);
+                    float sx = availableW / (float) page.getWidth();
+                    float sy = availableH / (float) page.getHeight();
+                    float scale = scaleMode == 1 ? Math.max(sx, sy) : scaleMode == 2 ? sx : Math.min(sx, sy);
+                    float drawnW = page.getWidth() * scale;
+                    float drawnH = page.getHeight() * scale;
+                    float offsetX = (width - drawnW) / 2f;
+                    float offsetY = positionMode == 1 ? height * margin : positionMode == 2 ? height - drawnH - height * margin : (height - drawnH) / 2f;
                     matrix.setScale(scale, scale);
                     matrix.postTranslate(offsetX, offsetY - y);
                     page.render(strip, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
@@ -155,9 +179,10 @@ public final class Rasterizer {
                 int green = (color >> 8) & 255;
                 int blue = color & 255;
                 int luma = (red * 54 + green * 183 + blue * 19) >> 8;
-                if (luma < 176) {
-                    bits[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
-                }
+                // Ordered 4x4 halftone preserves light-grey fills and anti-aliased edges
+                // on a 1-bit monochrome laser engine instead of dropping them at one threshold.
+                int threshold = 8 + BAYER_4X4[(y + r) & 3][x & 3] * 16;
+                if (luma < threshold) bits[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
             }
         }
     }
