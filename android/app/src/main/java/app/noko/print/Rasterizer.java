@@ -69,6 +69,47 @@ public final class Rasterizer {
         return bits;
     }
 
+    public static java.util.List<byte[]> textPages(String text, Paper paper, boolean landscape) {
+        int width = paper.widthPx(landscape);
+        int height = paper.heightPx(landscape);
+        int stride = Paper.stride(width);
+        int margin = Math.round(width * 0.07f);
+        int contentHeight = height - margin * 2;
+        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        paint.setColor(Color.BLACK);
+        paint.setTextSize(width / 42f);
+        String value = text == null ? "" : text;
+        StaticLayout layout = StaticLayout.Builder
+                .obtain(value, 0, value.length(), paint, width - margin * 2)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1.25f)
+                .setIncludePad(true)
+                .build();
+        java.util.List<byte[]> pages = new java.util.ArrayList<>();
+        int line = 0;
+        while (line < layout.getLineCount() || pages.isEmpty()) {
+            int startLine = line;
+            int startTop = layout.getLineTop(startLine);
+            int endLine = startLine;
+            while (endLine < layout.getLineCount()
+                    && layout.getLineBottom(endLine) - startTop <= contentHeight) endLine++;
+            if (endLine == startLine && endLine < layout.getLineCount()) endLine++;
+            final int offsetY = startTop;
+            byte[] bits = new byte[stride * height];
+            drawStrips(width, height, bits, stride, (canvas, w, h) -> {
+                canvas.save();
+                canvas.clipRect(margin, margin, w - margin, h - margin);
+                canvas.translate(margin, margin - offsetY);
+                layout.draw(canvas);
+                canvas.restore();
+            });
+            pages.add(bits);
+            line = endLine;
+            if (line >= layout.getLineCount()) break;
+        }
+        return pages;
+    }
+
     public static byte[] imagePage(Bitmap source, Paper paper) { return imagePage(source, paper, false); }
 
     public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape) {

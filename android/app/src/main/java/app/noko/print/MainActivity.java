@@ -31,6 +31,17 @@ import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.LinearLayout;
+import android.widget.HorizontalScrollView;
+import android.util.TypedValue;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
+import android.graphics.drawable.GradientDrawable;
+import org.xmlpull.v1.XmlPullParser;
+import android.util.Xml;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -51,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
 
     private final ExecutorService jobs = Executors.newSingleThreadExecutor();
     private UsbManager usbManager;
-    private UsbLink link;
+    private volatile UsbLink link;
     private Uri document;
     private String documentName = "";
     private Kind kind = Kind.NONE;
@@ -61,6 +72,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean receiverRegistered;
     private int documentPages = 1;
     private int previewGeneration;
+    private int previewPageIndex = 0;
+    private LinearLayout previewThumbnails;
+    private TextView previewPageLabel;
 
     private TextView fileView;
     private TextView statusView;
@@ -114,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    private enum Kind { NONE, PDF, IMAGE, TEXT }
+    private enum Kind { NONE, PDF, IMAGE, TEXT, DOCX }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -124,6 +138,8 @@ public class MainActivity extends AppCompatActivity {
 
         fileView = findViewById(R.id.file_name);
         previewView = findViewById(R.id.preview);
+        previewThumbnails = findViewById(R.id.preview_thumbnails);
+        previewPageLabel = findViewById(R.id.preview_page_label);
         pageFrom = findViewById(R.id.page_from);
         pageTo = findViewById(R.id.page_to);
         connectionState = findViewById(R.id.connection_state);
@@ -179,13 +195,16 @@ public class MainActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.pick).setOnClickListener(v -> opener.launch(new String[]{
-                "application/pdf", "text/plain", "image/*"
+                "application/pdf", "text/plain", "image/*",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/rtf", "text/rtf", "*/*"
         }));
         findViewById(R.id.test_page).setOnClickListener(v -> {
             kind = Kind.NONE;
             document = null;
             documentName = "Built-in test page";
             documentPages = 1;
+            previewPageIndex = 0;
             pageFrom.setText("1"); pageTo.setText("1");
             fileView.setText(documentName);
             refreshPreview();
@@ -228,16 +247,19 @@ public class MainActivity extends AppCompatActivity {
         documentName = nameOf(uri);
         String type = getContentResolver().getType(uri);
         String lowerName = documentName == null ? "" : documentName.toLowerCase(java.util.Locale.ROOT);
+        previewPageIndex = 0;
         if ((type != null && type.equalsIgnoreCase("application/pdf")) || lowerName.endsWith(".pdf")) {
             kind = Kind.PDF;
         } else if ((type != null && type.startsWith("image/")) || isImageName(lowerName)) {
             kind = Kind.IMAGE;
-        } else if ((type != null && type.startsWith("text/")) || isTextName(lowerName)) {
+        } else if (lowerName.endsWith(".docx") || (type != null && type.equalsIgnoreCase("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))) {
+            kind = Kind.DOCX;
+        } else if ((type != null && (type.startsWith("text/") || type.equalsIgnoreCase("application/rtf"))) || isTextName(lowerName) || lowerName.endsWith(".rtf")) {
             kind = Kind.TEXT;
         } else {
             kind = Kind.NONE;
             document = null;
-            say("Unsupported file. Choose a PDF, JPG, PNG, or TXT file.");
+            say("Unsupported file. Choose PDF, DOCX, RTF, TXT, JPG or PNG.");
             return;
         }
         fileView.setText(documentName);
@@ -249,12 +271,69 @@ public class MainActivity extends AppCompatActivity {
         }
         pageFrom.setText("1"); pageTo.setText(String.valueOf(documentPages));
         refreshPreview();
+        if (kind == Kind.PDF) buildPdfThumbnails(uri, documentPages);
+        else clearPdfThumbnails();
         say(documentPages + " page" + (documentPages == 1 ? "" : "s") + " ready.");
     }
 
     private boolean isImageName(String name) {
         return name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
                 || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".gif");
+    }
+
+    private void clearPdfThumbnails() {
+        if (previewThumbnails != null) previewThumbnails.removeAllViews();
+        if (previewPageLabel != null) previewPageLabel.setText("Preview");
+    }
+
+    private void buildPdfThumbnails(Uri uri, int count) {
+        if (previewThumbnails == null) return;
+        previewThumbnails.removeAllViews();
+        jobs.execute(() -> {
+            try (ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(uri, "r")) {
+                if (fd == null) return;
+                PdfRenderer renderer = new PdfRenderer(fd);
+                try {
+                    for (int i = 0; i < renderer.getPageCount(); i++) {
+                        final int pageNumber = i;
+                        PdfRenderer.Page page = renderer.openPage(i);
+                        Bitmap thumb = Bitmap.createBitmap(88, 116, Bitmap.Config.ARGB_8888);
+                        thumb.eraseColor(Color.WHITE);
+                        float scale = Math.min(80f / page.getWidth(), 108f / page.getHeight());
+                        Matrix matrix = new Matrix(); matrix.setScale(scale, scale);
+                        page.render(thumb, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        page.close();
+                        runOnUiThread(() -> {
+                            ImageView item = new ImageView(this);
+                            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(76), dp(104));
+                            lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+                            item.setLayoutParams(lp); item.setPadding(dp(3), dp(3), dp(3), dp(3));
+                            item.setScaleType(ImageView.ScaleType.FIT_CENTER); item.setImageBitmap(thumb);
+                            item.setContentDescription("Preview page " + (pageNumber + 1));
+                            item.setBackground(makeThumbBackground(pageNumber == previewPageIndex));
+                            item.setOnClickListener(v -> { previewPageIndex = pageNumber; refreshPreview(); updateThumbnailSelection(); });
+                            previewThumbnails.addView(item);
+                        });
+                    }
+                } finally { renderer.close(); }
+            } catch (Exception e) { say("Some page thumbnails could not be created: " + e.getMessage()); }
+        });
+    }
+
+    private int dp(float value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
+
+    private GradientDrawable makeThumbBackground(boolean selected) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE); bg.setCornerRadius(dp(8));
+        bg.setStroke(dp(selected ? 2 : 1), selected ? Color.rgb(22, 131, 255) : Color.LTGRAY);
+        return bg;
+    }
+
+    private void updateThumbnailSelection() {
+        if (previewThumbnails == null) return;
+        for (int i = 0; i < previewThumbnails.getChildCount(); i++) {
+            previewThumbnails.getChildAt(i).setBackground(makeThumbBackground(i == previewPageIndex));
+        }
     }
 
     private boolean isTextName(String name) {
@@ -280,7 +359,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         connecting = true;
-        setConnectionState(false, "Looking for HP LaserJet M1005…");
+        say("Looking for HP LaserJet M1005…");
         UsbDevice found = null;
         for (UsbDevice device : usbManager.getDeviceList().values()) {
             if (UsbLink.isM1005(device)) {
@@ -290,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (found == null) {
             connecting = false;
-            setConnectionState(false, "Printer not found. Check OTG and power.");
+            say("Printer not found. Check OTG and power.");
             return;
         }
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -319,7 +398,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void attach(UsbDevice device) {
+    private synchronized void attach(UsbDevice device) {
         if (link != null && link.isOpen() && link.deviceId() == device.getDeviceId()) {
             connecting = false;
             setConnectionState(true, "Printer connection is stable.");
@@ -347,11 +426,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void closeLink() {
-        if (link != null) {
-            link.close();
-            link = null;
-        }
+    private synchronized void closeLink() {
+        UsbLink old = link;
+        link = null;
+        if (old != null) old.close();
     }
 
     private void print() {
@@ -389,8 +467,10 @@ public class MainActivity extends AppCompatActivity {
                         marginMode, scaleMode, positionMode, collate);
                 say("Sent. The M1005 should pull a sheet now.");
             } catch (Exception e) {
-                if (link == null || !link.isOpen()) setConnectionState(false, e.getMessage() == null ? "Printer connection lost. Reconnect and retry." : e.getMessage());
-                else say(e.getMessage() == null ? "Print failed." : e.getMessage());
+                if (link == null || !link.isOpen()) {
+                    closeLink();
+                    setConnectionState(false, e.getMessage() == null ? "Printer connection lost. Reconnect and retry." : e.getMessage());
+                } else say(e.getMessage() == null ? "Print failed." : e.getMessage());
             } finally {
                 busy = false;
                 runOnUiThread(() -> {
@@ -445,6 +525,19 @@ public class MainActivity extends AppCompatActivity {
             }
             return;
         }
+        if (kind == Kind.DOCX || kind == Kind.TEXT) {
+            String text = kind == Kind.DOCX ? readDocx(document) : readText(document);
+            java.util.List<byte[]> pages = Rasterizer.textPages(text, paper, landscape);
+            int total = pages.size() * copyCount;
+            int sent = 0;
+            for (int copy = 0; copy < copyCount; copy++) {
+                for (byte[] bits : pages) {
+                    say("Printing document page " + (++sent) + " of " + total);
+                    sendPacked(bits, paper, density, econo, 1, landscape);
+                }
+            }
+            return;
+        }
         if (kind == Kind.IMAGE) {
             Bitmap bitmap = decodeImage(document);
             try {
@@ -457,8 +550,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         String text = readText(document);
-        byte[] bits = Rasterizer.textPage(text, paper, landscape);
-        sendPacked(bits, paper, density, econo, copyCount, landscape);
+        java.util.List<byte[]> pages = Rasterizer.textPages(text, paper, landscape);
+        for (int copy = 0; copy < copyCount; copy++) for (byte[] bits : pages) sendPacked(bits, paper, density, econo, 1, landscape);
     }
 
     private void sendPacked(byte[] bits, Paper paper, int density, boolean econo, int copyCount, boolean landscape) throws IOException {
@@ -490,6 +583,7 @@ public class MainActivity extends AppCompatActivity {
         final boolean previewLandscape = landscape;
         final Uri previewDocument = document;
         final Kind previewKind = kind;
+        final int selectedPreviewPage = previewPageIndex;
         jobs.execute(() -> {
             Bitmap bitmap = null;
             try {
@@ -518,7 +612,8 @@ public class MainActivity extends AppCompatActivity {
                         if (fd != null) {
                             PdfRenderer renderer = new PdfRenderer(fd);
                             try {
-                                PdfRenderer.Page page = renderer.openPage(0);
+                                int safePage = Math.max(0, Math.min(selectedPreviewPage, renderer.getPageCount() - 1));
+                                PdfRenderer.Page page = renderer.openPage(safePage);
                                 try {
                                     Bitmap pageBitmap = Bitmap.createBitmap(w - 44, h - 44, Bitmap.Config.ARGB_8888);
                                     pageBitmap.eraseColor(Color.WHITE);
@@ -531,6 +626,13 @@ public class MainActivity extends AppCompatActivity {
                             } finally { renderer.close(); }
                         }
                     }
+                } else if (previewDocument != null && (previewKind == Kind.TEXT || previewKind == Kind.DOCX)) {
+                    String body = previewKind == Kind.DOCX ? readDocx(previewDocument) : readText(previewDocument);
+                    TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+                    text.setColor(Color.BLACK); text.setTextSize(16f);
+                    StaticLayout layout = StaticLayout.Builder.obtain(body, 0, body.length(), text, w - 64)
+                            .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(0f, 1.2f).build();
+                    canvas.save(); canvas.translate(32, 30); canvas.clipRect(0, 0, w - 64, h - 60); layout.draw(canvas); canvas.restore();
                 } else {
                     Paint text = new Paint(Paint.ANTI_ALIAS_FLAG); text.setColor(Color.BLACK); text.setTextSize(22f); text.setFakeBoldText(true);
                     canvas.drawText("Noko Print", 34, 82, text);
@@ -550,13 +652,49 @@ public class MainActivity extends AppCompatActivity {
                 bitmap.setPixels(pixels, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
                 Bitmap ready = bitmap;
                 runOnUiThread(() -> {
-                    if (!isFinishing() && generation == previewGeneration) previewView.setImageBitmap(ready);
+                    if (!isFinishing() && generation == previewGeneration) {
+                        previewView.setImageBitmap(ready);
+                        if (previewPageLabel != null) previewPageLabel.setText(previewKind == Kind.PDF ? "Page " + (selectedPreviewPage + 1) + " of " + documentPages : "Print preview");
+                        updateThumbnailSelection();
+                    }
                     else ready.recycle();
                 });
             } catch (Exception ignored) {
                 if (bitmap != null) bitmap.recycle();
             }
         });
+    }
+
+    private String readDocx(Uri uri) throws IOException {
+        StringBuilder output = new StringBuilder();
+        try (InputStream raw = getContentResolver().openInputStream(uri)) {
+            if (raw == null) throw new IOException("Could not open the Word document");
+            ZipInputStream zip = new ZipInputStream(raw);
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if ("word/document.xml".equals(entry.getName())) {
+                    XmlPullParser parser = Xml.newPullParser();
+                    parser.setInput(zip, "UTF-8");
+                    int event;
+                    while ((event = parser.next()) != XmlPullParser.END_DOCUMENT && output.length() < 20000) {
+                        if (event == XmlPullParser.START_TAG && "t".equals(parser.getName())) {
+                            String value = parser.nextText();
+                            if (value != null) output.append(value);
+                        } else if (event == XmlPullParser.END_TAG && "p".equals(parser.getName())) {
+                            output.append("\n\n");
+                        } else if (event == XmlPullParser.START_TAG && "tab".equals(parser.getName())) {
+                            output.append("    ");
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            if (e instanceof IOException) throw (IOException) e;
+            throw new IOException("Could not read this DOCX file", e);
+        }
+        if (output.length() == 0) throw new IOException("No readable text was found in this Word document");
+        return output.toString();
     }
 
     private Bitmap decodeImage(Uri uri) throws IOException {
