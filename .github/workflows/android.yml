@@ -18,6 +18,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # This project contains the Android Gradle files but does not include
+      # the Gradle wrapper (gradlew/gradle-wrapper.jar). Install Gradle 8.7
+      # directly instead of trying to execute a missing ./gradlew file.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
@@ -28,11 +36,12 @@ jobs:
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
-            "ndk;26.1.10909125"
+            "ndk;26.1.10909125" \
+            "cmake;3.22.1"
 
       - name: Build installable APK
         working-directory: android
-        run: chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
