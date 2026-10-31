@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/paper"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.08"
+            android:text="NOKO PRINT"
+            android:textAllCaps="true"
+            android:textColor="@color/ready"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="HP LaserJet M1005"
+            android:textColor="@color/ink"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Machine KJ73EDG  ·  USB OTG"
+            android:textColor="@color/muted"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/file_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@color/card"
+            android:padding="16dp"
+            android:text="No document yet"
+            android:textColor="@color/ink"
+            android:textSize="16sp" />
+
+        <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+            android:id="@+id/pick"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:text="Choose PDF or photo" />
+
+        <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+            android:id="@+id/test_page"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="8dp"
+            android:text="Use the test page" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Paper"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+
+        <Spinner
+            android:id="@+id/paper"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/density_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Toner 3 of 5"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+
+        <SeekBar
+            android:id="@+id/density"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="4"
+            android:progress="2" />
+
+        <CheckBox
+            android:id="@+id/toner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save toner"
+            android:textColor="@color/ink" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Copies"
+                android:textColor="@color/ink"
+                android:textSize="16sp" />
+
+            <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+                android:id="@+id/copies_minus"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="−" />
+
+            <TextView
+                android:id="@+id/copies"
+                android:layout_width="36dp"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="1"
+                android:textColor="@color/ink"
+                android:textSize="18sp" />
+
+            <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+                android:id="@+id/copies_plus"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="+" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+            android:id="@+id/connect"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="16dp"
+            android:text="Connect printer" />
+
+        <com.google.android.material.button.MaterialButton
+        android:textAllCaps="false"
+            android:id="@+id/print"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="Print" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:indeterminate="true"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
+    </LinearLayout>
+</ScrollView>
