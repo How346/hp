@@ -154,6 +154,7 @@ public final class Rasterizer {
             Bitmap strip = Bitmap.createBitmap(width, stripH, Bitmap.Config.ARGB_8888);
             try {
                 int[] row = new int[width];
+                MonochromePacker packer = new MonochromePacker(width, stride, bits);
                 for (int y = 0; y < height; y += stripH) {
                     int rows = Math.min(stripH, height - y);
                     strip.eraseColor(Color.WHITE);
@@ -171,7 +172,7 @@ public final class Rasterizer {
                     matrix.setScale(scale, scale);
                     matrix.postTranslate(offsetX, offsetY - y);
                     page.render(strip, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
-                    pack(strip, rows, y, width, height, stride, bits, row);
+                    pack(strip, rows, y, width, height, stride, bits, row, packer);
                 }
             } finally {
                 strip.recycle();
@@ -191,6 +192,7 @@ public final class Rasterizer {
         Bitmap strip = Bitmap.createBitmap(width, stripH, Bitmap.Config.ARGB_8888);
         try {
             int[] row = new int[width];
+            MonochromePacker packer = new MonochromePacker(width, stride, bits);
             for (int y = 0; y < height; y += stripH) {
                 int rows = Math.min(stripH, height - y);
                 strip.eraseColor(Color.WHITE);
@@ -199,28 +201,70 @@ public final class Rasterizer {
                 canvas.translate(0f, -y);
                 drawer.draw(canvas, width, height);
                 canvas.restore();
-                pack(strip, rows, y, width, height, stride, bits, row);
+                pack(strip, rows, y, width, height, stride, bits, row, packer);
             }
         } finally {
             strip.recycle();
         }
     }
 
-    private static void pack(Bitmap strip, int rows, int y, int width, int height, int stride, byte[] bits, int[] row) {
+    /**
+     * Converts grayscale rows to a 1-bit image with continuous Floyd-Steinberg
+     * error diffusion. The error rows are retained between 64-row render strips,
+     * avoiding visible strip seams and preserving photographic mid-tones.
+     */
+    private static final class MonochromePacker {
+        private final int width;
+        private final int stride;
+        private final byte[] output;
+        private float[] currentError;
+        private float[] nextError;
+
+        MonochromePacker(int width, int stride, byte[] output) {
+            this.width = width;
+            this.stride = stride;
+            this.output = output;
+            currentError = new float[width + 2];
+            nextError = new float[width + 2];
+        }
+
+        void addRow(int[] pixels, int outputY) {
+            int base = outputY * stride;
+            for (int x = 0; x < width; x++) {
+                int color = pixels[x];
+                int alpha = (color >>> 24) & 255;
+                int red = (color >>> 16) & 255;
+                int green = (color >>> 8) & 255;
+                int blue = color & 255;
+                // Composite transparent pixels onto white paper before conversion.
+                red = (red * alpha + 255 * (255 - alpha)) / 255;
+                green = (green * alpha + 255 * (255 - alpha)) / 255;
+                blue = (blue * alpha + 255 * (255 - alpha)) / 255;
+                float gray = (red * 54f + green * 183f + blue * 19f) / 256f;
+                // Suppress scanner-like background speckle while retaining light grays.
+                if (gray >= 250f) gray = 255f;
+                else if (gray <= 5f) gray = 0f;
+                float adjusted = Math.max(0f, Math.min(255f, gray + currentError[x + 1]));
+                int quantized = adjusted < 128f ? 0 : 255;
+                if (quantized == 0) output[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
+                float error = adjusted - quantized;
+                currentError[x + 2] += error * (7f / 16f);
+                nextError[x] += error * (3f / 16f);
+                nextError[x + 1] += error * (5f / 16f);
+                nextError[x + 2] += error * (1f / 16f);
+            }
+            float[] swap = currentError;
+            currentError = nextError;
+            nextError = swap;
+            java.util.Arrays.fill(nextError, 0f);
+        }
+    }
+
+    private static void pack(Bitmap strip, int rows, int y, int width, int height,
+                             int stride, byte[] bits, int[] row, MonochromePacker packer) {
         for (int r = 0; r < rows && y + r < height; r++) {
             strip.getPixels(row, 0, width, 0, r, width, 1);
-            int base = (y + r) * stride;
-            for (int x = 0; x < width; x++) {
-                int color = row[x];
-                int red = (color >> 16) & 255;
-                int green = (color >> 8) & 255;
-                int blue = color & 255;
-                int luma = (red * 54 + green * 183 + blue * 19) >> 8;
-                // Clean monochrome thresholding avoids the Bayer-screen white pinholes
-                // and dotted texture produced by ordered dithering on this 1-bit engine.
-                // Anti-aliased edge pixels are retained while paper/background stays white.
-                if (luma < 176) bits[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
-            }
+            packer.addRow(row, y + r);
         }
     }
 

@@ -460,7 +460,8 @@ public class MainActivity extends AppCompatActivity {
             say("Enter a valid page range from 1 to " + documentPages + ".");
             return;
         }
-        int density = ((SeekBar) findViewById(R.id.density)).getProgress() + 1;
+        // Keep the printer's internal engine setting fixed; users should not need to tune DPI/density.
+        int density = 3;
         boolean econo = tonerBox.isChecked();
         int copyCount = copies;
         int marginMode = marginSpinner.getSelectedItemPosition();
