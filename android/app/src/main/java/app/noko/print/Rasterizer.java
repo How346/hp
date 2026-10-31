@@ -15,10 +15,6 @@ import android.text.TextPaint;
 import java.io.IOException;
 
 public final class Rasterizer {
-    private static final int[][] BAYER_4X4 = {
-            {0, 8, 2, 10}, {12, 4, 14, 6},
-            {3, 11, 1, 9}, {15, 7, 13, 5}
-    };
 
     public interface Progress {
         void onPage(int index, int count);
@@ -220,10 +216,10 @@ public final class Rasterizer {
                 int green = (color >> 8) & 255;
                 int blue = color & 255;
                 int luma = (red * 54 + green * 183 + blue * 19) >> 8;
-                // Ordered 4x4 halftone preserves light-grey fills and anti-aliased edges
-                // on a 1-bit monochrome laser engine instead of dropping them at one threshold.
-                int threshold = 8 + BAYER_4X4[(y + r) & 3][x & 3] * 16;
-                if (luma < threshold) bits[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
+                // Clean monochrome thresholding avoids the Bayer-screen white pinholes
+                // and dotted texture produced by ordered dithering on this 1-bit engine.
+                // Anti-aliased edge pixels are retained while paper/background stays white.
+                if (luma < 176) bits[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
             }
         }
     }

@@ -1,19 +1,21 @@
-# Noko Print — PDF print-quality update
+# Noko Print — print clarity and preview update
 
-This update changes the PDF/image-to-monochrome conversion used by the HP LaserJet M1005.
+## Changes in this update
 
-## What changed
+- Removed ordered Bayer dithering from the 1-bit raster conversion. The previous pattern could make solid text and fine lines look dotted or show white pinholes. The converter now uses a clean monochrome threshold to produce continuous black strokes on white paper.
+- Increased the on-screen preview render size to 1200 px for better inspection.
+- Tapping the preview opens a larger viewer. Pinch to zoom (up to 6×) and drag while zoomed to inspect details.
+- Increased the copies +/- button touch targets to 52 × 48 dp and retained explicit click handlers.
+- Added an honest DOCX limitation notice: the current built-in DOCX reader extracts text and does not preserve Word page layout, fonts, tables or exact spacing. Export DOCX to PDF for layout-faithful printing.
 
-- Replaced a single hard black/white cutoff with Floyd–Steinberg error-diffusion halftoning.
-- Light-grey fills, shaded table cells, gradients and anti-aliased PDF edges are converted into printable dot patterns instead of being discarded as white.
-- Transparent pixels are composited onto white before monochrome conversion, avoiding unexpected dark/black transparent areas.
-- The same conversion is applied across strip boundaries so halftone texture does not restart every strip.
-- The printer still receives its native 1-bit monochrome raster; no unsupported colour mode is sent to the M1005.
+## Important print limitations
 
-## Important limitation
+- HP LaserJet M1005 is monochrome; colour is necessarily converted to black and white.
+- A 1-bit printer raster cannot reproduce colour or continuous grayscale. This update prioritizes clean text and line art over simulated gray halftone dots. Some light-gray fills may become white.
+- Exact physical output also depends on toner, paper, printer condition and the source PDF. A real print test is required.
+- DOCX is not yet rendered by a full Word-compatible layout engine. Use PDF for same-layout printing.
+- The zoom viewer magnifies the generated on-screen preview; it does not change print resolution or print settings.
 
-The HP LaserJet M1005 is a monochrome printer. Colour PDFs cannot print in colour; colours are converted to grayscale and then halftoned. “Same to same” is therefore limited by monochrome output, printer resolution, toner and paper. Very pale fills may remain subtle.
+## Build verification
 
-## Build
-
-Run the repository's existing GitHub Actions workflow. A physical test print is still needed to confirm output on the target M1005 and Android phone.
+The Android project in this archive does not include a Gradle wrapper. Run the existing GitHub Actions workflow to compile it, then test with the actual HP LaserJet M1005 over OTG. No successful build or physical print is claimed here.

@@ -1,6 +1,7 @@
 package app.noko.print;
 
 import android.app.PendingIntent;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -23,6 +24,9 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.widget.FrameLayout;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.ProgressBar;
@@ -214,6 +218,8 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.copies_plus).setOnClickListener(v -> setCopies(copies + 1));
         findViewById(R.id.connect).setOnClickListener(v -> connectPrinter());
         printButton.setOnClickListener(v -> print());
+        // The preview opens a high-resolution viewer; pinch to zoom and drag to inspect.
+        previewView.setOnClickListener(v -> showZoomPreview());
 
         IntentFilter filter = new IntentFilter(ACTION_USB);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
@@ -273,7 +279,11 @@ public class MainActivity extends AppCompatActivity {
         refreshPreview();
         if (kind == Kind.PDF) buildPdfThumbnails(uri, documentPages);
         else clearPdfThumbnails();
-        say(documentPages + " page" + (documentPages == 1 ? "" : "s") + " ready.");
+        if (kind == Kind.DOCX) {
+            say("DOCX loaded. This built-in reader extracts text only; for original fonts, tables, spacing and exact layout, save/export the Word file as PDF before printing.");
+        } else {
+            say(documentPages + " page" + (documentPages == 1 ? "" : "s") + " ready.");
+        }
     }
 
     private boolean isImageName(String name) {
@@ -575,6 +585,55 @@ public class MainActivity extends AppCompatActivity {
         catch (Exception ignored) { return fallback; }
     }
 
+    private void showZoomPreview() {
+        if (previewView.getDrawable() == null) {
+            say("Choose a document to preview it.");
+            return;
+        }
+        Bitmap source = ((android.graphics.drawable.BitmapDrawable) previewView.getDrawable()).getBitmap();
+        ImageView image = new ImageView(this);
+        image.setImageBitmap(source);
+        image.setScaleType(ImageView.ScaleType.MATRIX);
+        Matrix transform = new Matrix();
+        image.setImageMatrix(transform);
+        final float[] scale = {1f};
+        ScaleGestureDetector detector = new ScaleGestureDetector(this,
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    @Override public boolean onScale(ScaleGestureDetector d) {
+                        float next = Math.max(1f, Math.min(6f, scale[0] * d.getScaleFactor()));
+                        float factor = next / scale[0];
+                        transform.postScale(factor, factor, d.getFocusX(), d.getFocusY());
+                        scale[0] = next;
+                        image.setImageMatrix(transform);
+                        return true;
+                    }
+                });
+        final float[] lastTouch = {-1f, -1f};
+        image.setOnTouchListener((v, event) -> {
+            detector.onTouchEvent(event);
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                lastTouch[0] = event.getX(); lastTouch[1] = event.getY();
+            } else if (event.getAction() == MotionEvent.ACTION_MOVE && !detector.isInProgress() && scale[0] > 1f) {
+                float dx = event.getX() - lastTouch[0];
+                float dy = event.getY() - lastTouch[1];
+                transform.postTranslate(dx, dy);
+                image.setImageMatrix(transform);
+                lastTouch[0] = event.getX(); lastTouch[1] = event.getY();
+            } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                lastTouch[0] = -1f; lastTouch[1] = -1f;
+            }
+            return true;
+        });
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Color.BLACK);
+        frame.addView(image, new FrameLayout.LayoutParams(-1, -1));
+        new AlertDialog.Builder(this)
+                .setTitle("Preview · Pinch to zoom")
+                .setView(frame)
+                .setPositiveButton("Close", null)
+                .show();
+    }
+
     private void refreshPreview() {
         if (previewView == null) return;
         final int generation = ++previewGeneration;
@@ -587,7 +646,7 @@ public class MainActivity extends AppCompatActivity {
         jobs.execute(() -> {
             Bitmap bitmap = null;
             try {
-                int w = 560;
+                int w = 1200;
                 double ratio = previewLandscape
                         ? previewPaper.widthMm / previewPaper.heightMm
                         : previewPaper.heightMm / previewPaper.widthMm;
