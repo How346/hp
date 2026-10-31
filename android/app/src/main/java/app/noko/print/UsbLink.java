@@ -38,6 +38,8 @@ public final class UsbLink implements AutoCloseable {
             throw new IOException("The phone did not open the printer");
         }
         if (device.getConfigurationCount() > 0) {
+            // Some Android USB host stacks already select the default config.
+            // A false return here is not fatal if the interface can be claimed.
             connection.setConfiguration(device.getConfiguration(0));
         }
         UsbInterface chosen = null;
@@ -80,9 +82,10 @@ public final class UsbLink implements AutoCloseable {
         int offset = 0;
         while (offset < data.length) {
             int length = Math.min(16384, data.length - offset);
-            int sent = connection.bulkTransfer(out, data, offset, length, 20000);
+            int sent = connection.bulkTransfer(out, data, offset, length, 30000);
             if (sent <= 0) {
-                throw new IOException("The printer stopped taking the page. Check paper and the toner door.");
+                throw new IOException("USB transfer failed at byte " + offset + " of " + data.length
+                        + ". Check the OTG adapter, printer power, paper, and USB permission, then reconnect.");
             }
             offset += sent;
         }

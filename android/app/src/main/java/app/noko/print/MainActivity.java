@@ -156,11 +156,31 @@ public class MainActivity extends AppCompatActivity {
         document = uri;
         documentName = nameOf(uri);
         String type = getContentResolver().getType(uri);
-        if (type != null && type.equals("application/pdf")) kind = Kind.PDF;
-        else if (type != null && type.startsWith("image/")) kind = Kind.IMAGE;
-        else kind = Kind.TEXT;
+        String lowerName = documentName == null ? "" : documentName.toLowerCase(java.util.Locale.ROOT);
+        if ((type != null && type.equalsIgnoreCase("application/pdf")) || lowerName.endsWith(".pdf")) {
+            kind = Kind.PDF;
+        } else if ((type != null && type.startsWith("image/")) || isImageName(lowerName)) {
+            kind = Kind.IMAGE;
+        } else if ((type != null && type.startsWith("text/")) || isTextName(lowerName)) {
+            kind = Kind.TEXT;
+        } else {
+            kind = Kind.NONE;
+            document = null;
+            say("Unsupported file. Choose a PDF, JPG, PNG, or TXT file.");
+            return;
+        }
         fileView.setText(documentName);
         say("Document ready.");
+    }
+
+    private boolean isImageName(String name) {
+        return name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
+                || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".gif");
+    }
+
+    private boolean isTextName(String name) {
+        return name.endsWith(".txt") || name.endsWith(".csv") || name.endsWith(".log")
+                || name.endsWith(".md");
     }
 
     private String nameOf(Uri uri) {
@@ -187,8 +207,15 @@ public class MainActivity extends AppCompatActivity {
             say("LaserJet M1005 is not on the cable yet. Check OTG and that the printer is on.");
             return;
         }
-        int flags = Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0;
-        PendingIntent pending = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB), flags);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 31) {
+            flags |= PendingIntent.FLAG_MUTABLE;
+        }
+        // Android 14+ blocks mutable PendingIntents with implicit intents.
+        // Setting our package keeps the USB permission callback explicit while
+        // still allowing UsbManager to attach its permission/device extras.
+        Intent permissionIntent = new Intent(ACTION_USB).setPackage(getPackageName());
+        PendingIntent pending = PendingIntent.getBroadcast(this, 1001, permissionIntent, flags);
         usbManager.requestPermission(found, pending);
     }
 
