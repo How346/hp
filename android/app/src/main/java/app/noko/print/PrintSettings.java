@@ -76,6 +76,33 @@ public final class PrintSettings {
         return c;
     }
 
+    /** Replace every option with the values from another settings object. */
+    public void assign(PrintSettings o) {
+        paper = o.paper;
+        orientation = o.orientation;
+        scaling = o.scaling;
+        margin = o.margin;
+        position = o.position;
+        nupIndex = o.nupIndex;
+        copies = o.copies;
+        collate = o.collate;
+        pageMode = o.pageMode;
+        range = o.range;
+        reverse = o.reverse;
+        manualDuplex = o.manualDuplex;
+        reverseEven = o.reverseEven;
+        density = o.density;
+        toner = o.toner;
+        tone = o.tone;
+        brightness = o.brightness;
+        contrast = o.contrast;
+        pageNumbers = o.pageNumbers;
+        border = o.border;
+        textSizeIndex = o.textSizeIndex;
+        rotation = o.rotation;
+        grayPreview = o.grayPreview;
+    }
+
     public int nup() {
         return NUP[Math.max(0, Math.min(NUP.length - 1, nupIndex))];
     }

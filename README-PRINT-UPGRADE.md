@@ -1,4 +1,4 @@
-# Noko Print Studio 2.0.0
+# Noko Print Studio 2.1.0
 
 Native Android app that prints straight to an **HP LaserJet M1005** over USB OTG.
 
@@ -38,3 +38,10 @@ Open or share files from other apps straight into Noko Print. Dark mode. Landsca
 ## Build
 Push to GitHub: the workflow builds `app-debug.apk` (artifact `noko-print`).
 Or locally: `cd android && gradle assembleDebug` (JDK 17, Android SDK 34, NDK 26.1, CMake 3.22).
+
+## 2.1.0 fixes
+- Settings sheet scrolls smoothly and can no longer close by accident (close with Done, X or back).
+- Print reliability: auto reconnect and resend if the USB handle went stale, stuck-permission fix,
+  job can never leave the app stuck, wake lock + screen kept on while printing, more memory for big photos.
+- Failed prints show a clear dialog with Try again.
+- Polish: swipe between sheets, fades, paper-edge preview, live "Print N sheets" button, Reset settings.

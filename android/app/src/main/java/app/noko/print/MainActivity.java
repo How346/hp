@@ -7,17 +7,23 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.text.format.DateUtils;
+import android.view.GestureDetector;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -37,6 +43,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -79,6 +86,9 @@ public class MainActivity extends AppCompatActivity {
     private volatile boolean cancelled;
     private boolean settingsBuilt;
     private BottomSheetDialog settingsDialog;
+    private View settingsContent;
+    private PowerManager.WakeLock wakeLock;
+    private boolean previewOk = true;
 
     private View home;
     private View editor;
@@ -182,6 +192,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        setupPreviewGestures();
         copiesView.setText(String.valueOf(s.copies));
         updateToneButton();
         applyLayoutOrientation();
@@ -205,6 +216,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         main.removeCallbacksAndMessages(null);
+        releaseWake();
         conn.release();
         previewExec.shutdownNow();
         printExec.shutdownNow();
@@ -223,6 +235,31 @@ public class MainActivity extends AppCompatActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         applyLayoutOrientation();
+    }
+
+    private void setupPreviewGestures() {
+        final GestureDetector gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onFling(MotionEvent a, MotionEvent b, float vx, float vy) {
+                if (a == null || b == null) return false;
+                float dx = b.getX() - a.getX();
+                float dy = b.getY() - a.getY();
+                if (Math.abs(dx) > dp(60) && Math.abs(dx) > Math.abs(dy) * 1.5f) {
+                    moveSheet(dx < 0 ? 1 : -1);
+                    return true;
+                }
+                return false;
+            }
+        });
+        preview.setOnTouchListener((v, e) -> {
+            gd.onTouchEvent(e);
+            return true;
+        });
     }
 
     // ------------------------------------------------------------------ layout
@@ -257,13 +294,18 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         editor.setVisibility(View.GONE);
+        home.setAlpha(0f);
         home.setVisibility(View.VISIBLE);
+        home.animate().alpha(1f).setDuration(180).start();
         refreshRecents();
     }
 
     private void showEditor() {
+        if (editor.getVisibility() == View.VISIBLE) return;
         home.setVisibility(View.GONE);
+        editor.setAlpha(0f);
         editor.setVisibility(View.VISIBLE);
+        editor.animate().alpha(1f).setDuration(180).start();
     }
 
     private void snack(String text) {
@@ -316,6 +358,9 @@ public class MainActivity extends AppCompatActivity {
                 row = "Printer not connected · tap to connect";
                 button = "Connect";
         }
+        MaterialCardView card = findViewById(R.id.conn_card);
+        card.setStrokeColor(ContextCompat.getColor(this, st == PrinterConnection.State.CONNECTED ? R.color.ok
+                : st == PrinterConnection.State.ERROR ? R.color.err : R.color.line));
         title.setText(t);
         detail.setText(msg);
         detail.setVisibility(msg == null || msg.isEmpty() ? View.GONE : View.VISIBLE);
@@ -621,15 +666,19 @@ public class MainActivity extends AppCompatActivity {
                     preview.setImageDrawable(null);
                     recycleShown();
                     sheetLabel.setText("");
+                    previewOk = false;
                     printButton.setEnabled(false);
                     return;
                 }
                 previewMessage.setVisibility(View.GONE);
+                previewOk = true;
                 printButton.setEnabled(!busy);
                 sheetTotal = ft;
                 sheetIndex = fs;
                 pageTotal = fp;
                 preview.setImageBitmap(fb);
+                preview.setAlpha(0.25f);
+                preview.animate().alpha(1f).setDuration(160).start();
                 recycleShown();
                 shownBitmap = fb;
                 sheetLabel.setText("Sheet " + (fs + 1) + " of " + ft);
@@ -667,12 +716,21 @@ public class MainActivity extends AppCompatActivity {
             if (sheetTotal != pageTotal) b.append(" on ").append(sheetTotal).append(sheetTotal == 1 ? " sheet" : " sheets");
         }
         summary.setText(b.toString());
+        if (!busy) {
+            String label = "Print";
+            if (pageTotal > 0) {
+                label = "Print " + sheetTotal + (sheetTotal == 1 ? " sheet" : " sheets");
+                if (s.copies > 1) label += " × " + s.copies;
+            }
+            printButton.setText(label);
+        }
     }
 
     private void setCopies(int next) {
         s.copies = Math.max(1, Math.min(50, next));
         copiesView.setText(String.valueOf(s.copies));
         s.save(this);
+        updateSummary();
     }
 
     // ---------------------------------------------------------------- settings
@@ -702,16 +760,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSettings() {
+        int height = Math.round(getResources().getDisplayMetrics().heightPixels * 0.9f);
         if (settingsDialog == null) {
             settingsDialog = new BottomSheetDialog(this);
-            View content = getLayoutInflater().inflate(R.layout.sheet_settings, null);
-            settingsDialog.setContentView(content);
-            bindSettings(content);
+            settingsContent = getLayoutInflater().inflate(R.layout.sheet_settings, null);
+            bindSettings(settingsContent);
+            settingsDialog.setContentView(settingsContent,
+                    new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height));
+            if (settingsDialog.getWindow() != null) {
+                settingsDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            }
             settingsDialog.setOnShowListener(d -> {
                 BottomSheetBehavior<?> behavior = settingsDialog.getBehavior();
+                // Not draggable: scrolling the settings can never close the sheet by accident.
+                behavior.setDraggable(false);
                 behavior.setSkipCollapsed(true);
                 behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                View container = settingsDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+                if (container != null) container.setBackgroundColor(Color.TRANSPARENT);
             });
+        } else {
+            ViewGroup.LayoutParams lp = settingsContent.getLayoutParams();
+            if (lp != null) {
+                lp.height = height;
+                settingsContent.setLayoutParams(lp);
+            }
         }
         settingsDialog.show();
     }
@@ -852,6 +925,20 @@ public class MainActivity extends AppCompatActivity {
             changed();
         });
         v.findViewById(R.id.btn_done).setOnClickListener(x -> settingsDialog.dismiss());
+        v.findViewById(R.id.btn_close).setOnClickListener(x -> settingsDialog.dismiss());
+        v.findViewById(R.id.btn_reset).setOnClickListener(x -> {
+            int keepCopies = s.copies;
+            s.assign(new PrintSettings());
+            s.copies = keepCopies;
+            s.save(this);
+            settingsDialog.dismiss();
+            settingsDialog = null;
+            settingsContent = null;
+            updateToneButton();
+            updateSummary();
+            schedulePreview();
+            snack("Settings reset to defaults");
+        });
         settingsBuilt = true;
     }
 
@@ -859,6 +946,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void onPrint() {
         if (doc == null || busy) return;
+        printButton.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
         if (conn.state() != PrinterConnection.State.CONNECTED) {
             snack("The printer isn't connected yet. Trying now…");
             conn.connectNow();
@@ -897,10 +985,29 @@ public class MainActivity extends AppCompatActivity {
 
     private void setJob(boolean running, String text, int percent) {
         jobPanel.setVisibility(running ? View.VISIBLE : View.GONE);
-        printButton.setEnabled(!running);
+        printButton.setEnabled(!running && previewOk);
         if (running) {
             jobText.setText(text);
             jobProgress.setProgress(percent);
+        }
+    }
+
+    private void acquireWake() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return;
+            if (wakeLock == null) wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "noko:print");
+            if (!wakeLock.isHeld()) wakeLock.acquire(15 * 60 * 1000L);
+        } catch (RuntimeException ignored) {
+            // printing still works without it
+        }
+    }
+
+    private void releaseWake() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        } catch (RuntimeException ignored) {
+            // already released
         }
     }
 
@@ -908,67 +1015,109 @@ public class MainActivity extends AppCompatActivity {
         final Document d = doc;
         busy = true;
         cancelled = false;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        acquireWake();
         setJob(true, "Preparing…", 0);
-        printExec.execute(() -> {
-            Planner.Plan plan = null;
-            UsbLink link = null;
-            String message;
-            boolean ok = false;
-            try {
-                plan = Planner.build(getApplicationContext(), d, snap);
-                if (plan.error != null) throw new IOException(plan.error);
-                link = conn.requireLink();
-                int sheets = plan.sheets.size();
-                int copies = Math.max(1, snap.copies);
-                boolean collate = snap.collate && copies > 1 && sheets > 1;
-                int total = collate ? sheets * copies : sheets;
-                int done = 0;
-                byte[][] cache = new byte[sheets][];
-                long used = 0;
-                int rounds = collate ? copies : 1;
-                for (int c = 0; c < rounds; c++) {
-                    for (int i = 0; i < sheets; i++) {
-                        if (cancelled) throw new IOException("Cancelled");
-                        postJob("Sending sheet " + (done + 1) + " of " + total, done * 100 / total);
-                        byte[] job = cache[i];
-                        if (job == null) {
-                            job = encode(plan, plan.sheets.get(i), d.isPhotoContent(), collate ? 1 : copies);
-                            if (collate && used + job.length < 48L * 1024 * 1024) {
-                                cache[i] = job;
-                                used += job.length;
-                            }
+        try {
+            printExec.execute(() -> runJob(d, snap, after));
+        } catch (RuntimeException e) {
+            finishJob("Could not start printing. Please try again.", false, snap, after);
+        }
+    }
+
+    private void runJob(Document d, PrintSettings snap, Runnable after) {
+        Planner.Plan plan = null;
+        UsbLink[] link = new UsbLink[1];
+        String message;
+        boolean ok = false;
+        try {
+            plan = Planner.build(getApplicationContext(), d, snap);
+            if (plan.error != null) throw new IOException(plan.error);
+            link[0] = conn.requireLink();
+            int sheets = plan.sheets.size();
+            int copies = Math.max(1, snap.copies);
+            boolean collate = snap.collate && copies > 1 && sheets > 1;
+            int total = collate ? sheets * copies : sheets;
+            int done = 0;
+            byte[][] cache = new byte[sheets][];
+            long used = 0;
+            int rounds = collate ? copies : 1;
+            for (int c = 0; c < rounds; c++) {
+                for (int i = 0; i < sheets; i++) {
+                    if (cancelled) throw new IOException("Cancelled");
+                    postJob("Printing sheet " + (done + 1) + " of " + total, done * 100 / total);
+                    byte[] job = cache[i];
+                    if (job == null) {
+                        job = encode(plan, plan.sheets.get(i), d.isPhotoContent(), collate ? 1 : copies);
+                        if (collate && used + job.length < 48L * 1024 * 1024) {
+                            cache[i] = job;
+                            used += job.length;
                         }
-                        link.write(job);
-                        done++;
                     }
+                    send(link, job);
+                    done++;
                 }
-                ok = true;
-                message = "Sent to the printer: " + sheets + (sheets == 1 ? " sheet" : " sheets")
-                        + (copies > 1 ? " × " + copies : "") + ".";
-            } catch (IOException e) {
-                String m = e.getMessage() == null ? "Printing failed." : e.getMessage();
-                if ("Cancelled".equals(m)) {
-                    message = "Print cancelled.";
-                } else {
-                    message = m;
-                    if (link != null && !link.isOpen()) conn.reportFailure(link, m);
-                }
-            } catch (OutOfMemoryError e) {
-                message = "Not enough memory for this page. Try fewer pages per sheet or a smaller photo.";
-            } catch (RuntimeException e) {
-                message = "Printing failed. Please try again.";
-            } finally {
-                if (plan != null) plan.close();
             }
-            final String fm = message;
-            final boolean fok = ok;
-            main.post(() -> {
-                busy = false;
-                setJob(false, "", 0);
-                printButton.setEnabled(true);
-                snack(fm);
-                if (fok && after != null) after.run();
-            });
+            ok = true;
+            message = "Sent to the printer: " + sheets + (sheets == 1 ? " sheet" : " sheets")
+                    + (copies > 1 ? " × " + copies : "") + ".";
+        } catch (IOException e) {
+            String m = e.getMessage() == null ? "Printing failed." : e.getMessage();
+            if ("Cancelled".equals(m)) {
+                message = "Print cancelled.";
+            } else {
+                message = m;
+                if (link[0] != null && !link[0].isOpen()) conn.reportFailure(link[0], m);
+            }
+        } catch (OutOfMemoryError e) {
+            message = "Not enough memory for this page. Try fewer pages per sheet or a smaller photo.";
+        } catch (Throwable e) {
+            message = "Printing stopped unexpectedly. Please try again.";
+        } finally {
+            if (plan != null) plan.close();
+        }
+        finishJob(message, ok, snap, after);
+    }
+
+    /** Writes one job; if the USB handle went stale, reconnects once and sends it again. */
+    private void send(UsbLink[] holder, byte[] job) throws IOException {
+        try {
+            holder[0].write(job);
+        } catch (IOException first) {
+            if (cancelled) throw first;
+            holder[0] = conn.reopenBlocking();
+            holder[0].write(job);
+        }
+    }
+
+    private void finishJob(String message, boolean ok, PrintSettings snap, Runnable after) {
+        main.post(() -> {
+            busy = false;
+            releaseWake();
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            setJob(false, "", 0);
+            updateSummary();
+            if (isFinishing() || isDestroyed()) return;
+            if (ok) {
+                snack(message);
+                if (after != null) after.run();
+            } else if ("Print cancelled.".equals(message)) {
+                snack(message);
+            } else {
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle("Couldn't print")
+                        .setMessage(message + "\n\nCheck that the printer is on, has paper, and the USB cable is firmly connected.")
+                        .setPositiveButton("Try again", (dd, w) -> {
+                            if (conn.state() == PrinterConnection.State.CONNECTED) {
+                                startJob(snap, after);
+                            } else {
+                                snack("Reconnecting to the printer…");
+                                conn.connectNow();
+                            }
+                        })
+                        .setNegativeButton("Close", null)
+                        .show();
+            }
         });
     }
 

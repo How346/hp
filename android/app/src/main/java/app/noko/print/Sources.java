@@ -175,7 +175,7 @@ public final class Sources {
         @Override
         public void prepare(RectF dest, float dpi, boolean preview) throws IOException {
             if (bmp != null) return;
-            int maxSide = preview ? 1600 : 3200;
+            int maxSide = preview ? 1600 : 2600;
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             try (InputStream in = resolver.openInputStream(uri)) {

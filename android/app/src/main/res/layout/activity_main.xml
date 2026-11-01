@@ -19,21 +19,44 @@
             android:orientation="vertical"
             android:padding="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Noko Print"
-                android:textColor="@color/ink"
-                android:textSize="30sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Print straight to your HP LaserJet M1005"
-                android:textColor="@color/muted"
-                android:textSize="14sp" />
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_badge"
+                    android:importantForAccessibility="no"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_print"
+                    app:tint="@color/on_primary" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Noko Print"
+                        android:textColor="@color/ink"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="HP LaserJet M1005 · USB"
+                        android:textColor="@color/muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/conn_card"
@@ -130,9 +153,11 @@
                     android:padding="16dp">
 
                     <ImageView
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_icon_soft"
                         android:importantForAccessibility="no"
+                        android:padding="11dp"
                         android:src="@drawable/ic_document"
                         app:tint="@color/primary" />
 
@@ -175,9 +200,11 @@
                     android:padding="16dp">
 
                     <ImageView
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_icon_soft"
                         android:importantForAccessibility="no"
+                        android:padding="11dp"
                         android:src="@drawable/ic_photo"
                         app:tint="@color/primary" />
 
@@ -228,9 +255,11 @@
                     android:padding="16dp">
 
                     <ImageView
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_icon_soft"
                         android:importantForAccessibility="no"
+                        android:padding="11dp"
                         android:src="@drawable/ic_text"
                         app:tint="@color/primary" />
 
@@ -273,9 +302,11 @@
                     android:padding="16dp">
 
                     <ImageView
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_icon_soft"
                         android:importantForAccessibility="no"
+                        android:padding="11dp"
                         android:src="@drawable/ic_test"
                         app:tint="@color/primary" />
 

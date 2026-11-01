@@ -126,6 +126,11 @@ public final class Rasterizer {
             }
             bmp.setPixels(px, 0, w, 0, y, w, 1);
         }
+        Paint edge = new Paint();
+        edge.setStyle(Paint.Style.STROKE);
+        edge.setStrokeWidth(3f);
+        edge.setColor(Color.rgb(176, 184, 196));
+        new Canvas(bmp).drawRect(1.5f, 1.5f, w - 1.5f, h - 1.5f, edge);
         return bmp;
     }
 

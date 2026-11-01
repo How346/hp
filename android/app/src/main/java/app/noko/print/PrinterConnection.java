@@ -139,6 +139,7 @@ public final class PrinterConnection {
     /** User pressed Connect / Retry. */
     public void connectNow() {
         autoRetries = 0;
+        permissionPending = false;
         main.removeCallbacks(scanTask);
         scanNow();
     }
@@ -156,6 +157,36 @@ public final class PrinterConnection {
             throw new IOException("Printer is not connected. Plug it in and tap Connect.");
         }
         return l;
+    }
+
+    /**
+     * Called on the print thread when a write failed: waits briefly, opens a fresh
+     * link (which also soft-resets the printer) and returns it.
+     */
+    public UsbLink reopenBlocking() throws IOException {
+        UsbDevice device = findPrinter();
+        if (device == null) {
+            throw new IOException("Printer not found. Check the USB cable and that it is switched on.");
+        }
+        if (!usb.hasPermission(device)) {
+            throw new IOException("USB access was lost. Go back, tap Connect and choose Allow.");
+        }
+        generation++;
+        closeLink();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Cancelled");
+        }
+        final UsbLink fresh = UsbLink.open(device, usb.openDevice(device));
+        synchronized (this) {
+            link = fresh;
+        }
+        main.post(() -> {
+            if (fresh == link) setState(State.CONNECTED, fresh.describe());
+        });
+        return fresh;
     }
 
     /** A transfer failed on this link. Safe to call from any thread. */
