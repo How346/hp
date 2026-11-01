@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Print settings"
+            android:textColor="@color/ink"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PAPER SIZE" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_paper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ORIENTATION" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_orientation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PAGES" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_pagemode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/range_layout"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Pages, e.g. 1-3, 5, 8-"
+            android:visibility="gone">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/range_edit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:digits="0123456789,- "
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Reverse page order" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_reverse"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Manual double-sided (odd pages, then even)" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_duplex"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Reverse back sides when flipping" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_reverse_even"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="LAYOUT" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pages per sheet" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_nup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Scaling" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_scale"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Margins" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_margin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Position" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_position"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Print sheet numbers" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_pagenum"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Draw a border around pages" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_border"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="QUALITY" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Black and white mode" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_tone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Print darkness" />
+            <TextView
+                android:id="@+id/slider_density_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_density"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:stepSize="1.0"
+            android:valueFrom="1.0"
+            android:valueTo="5.0" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Brightness" />
+            <TextView
+                android:id="@+id/slider_brightness_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_brightness"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:stepSize="5.0"
+            android:valueFrom="-50.0"
+            android:valueTo="50.0" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Contrast" />
+            <TextView
+                android:id="@+id/slider_contrast_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_contrast"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:stepSize="10.0"
+            android:valueFrom="50.0"
+            android:valueTo="150.0" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Toner saver (lighter output)" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_toner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="COPIES" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal">
+            <TextView
+                style="@style/Noko.Label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Collate copies (1,2,3 then 1,2,3)" />
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/sw_collate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView
+            style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TEXT AND PHOTOS" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Text size" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_textsize"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <TextView style="@style/Noko.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Rotate photos" />
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chips_rotation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_done"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="24dp"
+            android:text="Done" />
+    </LinearLayout>
+</ScrollView>

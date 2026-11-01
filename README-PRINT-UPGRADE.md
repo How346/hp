@@ -1,20 +1,40 @@
-# Noko Print Studio 1.1.0
+# Noko Print Studio 2.0.0
 
-## Included improvements
-- Refreshed Android print workspace with a document preview and clearer settings sections.
-- USB connection state handling with attach/detach monitoring, duplicate-connect protection, and stale-link recovery.
-- Portrait and landscape page orientation.
-- A4, Letter, Legal, and A5 paper selections.
-- PDF page-range printing, 1–20 copies, five print-darkness levels, and toner-saver mode.
-- Black-and-white preview and 600 DPI raster output.
-- PDF, common image formats, and text-file printing.
-- Preserves the HP LaserJet M1005 USB OTG print pipeline.
+Native Android app that prints straight to an **HP LaserJet M1005** over USB OTG.
 
-## Important printer limitations
-- HP LaserJet M1005 is a monochrome printer, so output is black and white.
-- Automatic duplex printing is not exposed by this USB raster workflow; use manual duplex by printing odd and even page ranges separately and reloading the paper as directed by the printer.
-- DOC/DOCX files are not directly rendered. Export them to PDF before printing.
-- Paper sizes offered are common sizes; the printer's tray and driver/firmware still determine which media it can physically accept.
+## What's new in 2.0
+
+**Connection fix (no more connected / not connected flicker)**
+One state machine (`PrinterConnection`) owns the link. It never polls, ignores duplicate
+USB events, only leaves "Connected" on a real unplug or failed transfer, and only updates
+the screen when something actually changed. It also reconnects on plug-in and after one
+failed transfer, and keeps the link when you switch apps.
+
+**Landscape fix**
+The printer needs a portrait raster. Landscape pages are now rotated into one before
+sending (the old version sent a sideways raster).
+
+**Screens**
+Home (printer status, Documents / Photos / Type or paste / Test page, Recent files) and a
+Preview screen with sheet navigation, B&W / grayscale preview, copies, and Print.
+
+**Settings (bottom sheet)**
+Paper A4, Letter, Legal, A5, B5, Executive · Orientation auto / portrait / landscape ·
+Pages all / odd / even / custom range ("1-3, 5, 8-") · reverse order · manual double-sided
+(odd pages, flip prompt, even pages) · pages per sheet 1/2/4/6/9 · scaling fit / fill / actual ·
+margins · position · sheet numbers · borders · text mode vs photo halftone · darkness ·
+brightness · contrast · toner saver · copies with collate · text size · photo rotation.
+
+**Files**
+PDF, JPG/PNG/WebP/BMP/GIF (multi-select, EXIF-aware), TXT/CSV/LOG/MD, DOCX (text only).
+Open or share files from other apps straight into Noko Print. Dark mode. Landscape phones.
+
+## Limits
+- Monochrome printer: colour is converted to grey.
+- No automatic duplex or scanning over this USB raster path.
+- DOCX prints text only (no images/formatting); export to PDF for exact layout.
+- Not an Android system print service, so other apps use Share / Open with.
 
 ## Build
-The GitHub Actions workflow installs Gradle 8.7 and Android SDK components, then runs `gradle assembleDebug` from `android/`. Download the `noko-print` artifact after a successful workflow run.
+Push to GitHub: the workflow builds `app-debug.apk` (artifact `noko-print`).
+Or locally: `cd android && gradle assembleDebug` (JDK 17, Android SDK 34, NDK 26.1, CMake 3.22).

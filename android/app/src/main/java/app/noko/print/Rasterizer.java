@@ -3,314 +3,175 @@ package app.noko.print;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.pdf.PdfRenderer;
-import android.os.ParcelFileDescriptor;
-import android.text.Layout;
-import android.text.StaticLayout;
-import android.text.TextPaint;
 
 import java.io.IOException;
 
+/** Renders sheets: preview bitmaps for the screen, 1-bit rasters for the printer. */
 public final class Rasterizer {
-
-    public interface Progress {
-        void onPage(int index, int count);
-    }
-
     private Rasterizer() {}
 
-    public static int pdfPageCount(ParcelFileDescriptor fd) throws IOException {
-        PdfRenderer renderer = new PdfRenderer(fd);
-        try {
-            return renderer.getPageCount();
-        } finally {
-            renderer.close();
-        }
+    public interface Cancel {
+        boolean isCancelled();
     }
 
-    public static byte[] testPage(Paper paper) { return testPage(paper, false); }
+    private static final int[] BAYER4 = {
+            0, 8, 2, 10,
+            12, 4, 14, 6,
+            3, 11, 1, 9,
+            15, 7, 13, 5};
 
-    public static byte[] testPage(Paper paper, boolean landscape) {
-        int width = paper.widthPx(landscape);
-        int height = paper.heightPx(landscape);
-        int stride = Paper.stride(width);
-        byte[] bits = new byte[stride * height];
-        drawStrips(width, height, bits, stride, (canvas, w, h) -> drawTest(canvas, w, h));
-        return bits;
-    }
+    /** Tone curve and black/white decision shared by preview and print. */
+    public static final class Tone {
+        final boolean halftone;
+        final int cutoff = 176;
+        final int[] lut = new int[256];
 
-    public static byte[] textPage(String text, Paper paper) { return textPage(text, paper, false); }
-
-    public static byte[] textPage(String text, Paper paper, boolean landscape) {
-        int width = paper.widthPx(landscape);
-        int height = paper.heightPx(landscape);
-        int stride = Paper.stride(width);
-        byte[] bits = new byte[stride * height];
-        int margin = Math.round(width * 0.07f);
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.BLACK);
-        paint.setTextSize(width / 42f);
-        StaticLayout layout = StaticLayout.Builder
-                .obtain(text == null ? "" : text, 0, text == null ? 0 : text.length(), paint, width - margin * 2)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, 1.25f)
-                .build();
-        drawStrips(width, height, bits, stride, (canvas, w, h) -> {
-            canvas.translate(margin, margin);
-            layout.draw(canvas);
-        });
-        return bits;
-    }
-
-    public static java.util.List<byte[]> textPages(String text, Paper paper, boolean landscape) {
-        int width = paper.widthPx(landscape);
-        int height = paper.heightPx(landscape);
-        int stride = Paper.stride(width);
-        int margin = Math.round(width * 0.07f);
-        int contentHeight = height - margin * 2;
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-        paint.setColor(Color.BLACK);
-        paint.setTextSize(width / 42f);
-        String value = text == null ? "" : text;
-        StaticLayout layout = StaticLayout.Builder
-                .obtain(value, 0, value.length(), paint, width - margin * 2)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, 1.25f)
-                .setIncludePad(true)
-                .build();
-        java.util.List<byte[]> pages = new java.util.ArrayList<>();
-        int line = 0;
-        while (line < layout.getLineCount() || pages.isEmpty()) {
-            int startLine = line;
-            int startTop = layout.getLineTop(startLine);
-            int endLine = startLine;
-            while (endLine < layout.getLineCount()
-                    && layout.getLineBottom(endLine) - startTop <= contentHeight) endLine++;
-            if (endLine == startLine && endLine < layout.getLineCount()) endLine++;
-            final int offsetY = startTop;
-            byte[] bits = new byte[stride * height];
-            drawStrips(width, height, bits, stride, (canvas, w, h) -> {
-                canvas.save();
-                canvas.clipRect(margin, margin, w - margin, h - margin);
-                canvas.translate(margin, margin - offsetY);
-                layout.draw(canvas);
-                canvas.restore();
-            });
-            pages.add(bits);
-            line = endLine;
-            if (line >= layout.getLineCount()) break;
-        }
-        return pages;
-    }
-
-    public static byte[] imagePage(Bitmap source, Paper paper) { return imagePage(source, paper, false); }
-
-    public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape) {
-        return imagePage(source, paper, landscape, 1, 0, 0);
-    }
-
-    public static byte[] imagePage(Bitmap source, Paper paper, boolean landscape,
-                                   int marginMode, int scaleMode, int positionMode) {
-        int width = paper.widthPx(landscape);
-        int height = paper.heightPx(landscape);
-        int stride = Paper.stride(width);
-        byte[] bits = new byte[stride * height];
-        drawStrips(width, height, bits, stride, (canvas, w, h) -> {
-            float margin = (marginMode == 0 ? 0f : marginMode == 1 ? 0.025f : marginMode == 2 ? 0.05f : 0.08f) * w;
-            float maxW = w - margin * 2f;
-            float maxH = h - margin * 2f;
-            float fit = Math.min(maxW / source.getWidth(), maxH / source.getHeight());
-            float fill = Math.max(maxW / source.getWidth(), maxH / source.getHeight());
-            float scale = scaleMode == 1 ? fill : scaleMode == 2 ? maxW / source.getWidth() : fit;
-            float dw = source.getWidth() * scale;
-            float dh = source.getHeight() * scale;
-            float left = (w - dw) / 2f;
-            float top = positionMode == 1 ? margin : positionMode == 2 ? h - dh - margin : (h - dh) / 2f;
-            RectF dest = new RectF(left, top, left + dw, top + dh);
-            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-            canvas.drawBitmap(source, null, dest, paint);
-        });
-        return bits;
-    }
-
-    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper) { return pdfPage(renderer, index, paper, false); }
-
-    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper, boolean landscape) {
-        return pdfPage(renderer, index, paper, landscape, 0, 0, 0);
-    }
-
-    public static byte[] pdfPage(PdfRenderer renderer, int index, Paper paper, boolean landscape,
-                                 int marginMode, int scaleMode, int positionMode) {
-        int width = paper.widthPx(landscape);
-        int height = paper.heightPx(landscape);
-        int stride = Paper.stride(width);
-        byte[] bits = new byte[stride * height];
-        PdfRenderer.Page page = renderer.openPage(index);
-        try {
-            int stripH = 64;
-            Bitmap strip = Bitmap.createBitmap(width, stripH, Bitmap.Config.ARGB_8888);
-            try {
-                int[] row = new int[width];
-                MonochromePacker packer = new MonochromePacker(width, stride, bits);
-                for (int y = 0; y < height; y += stripH) {
-                    int rows = Math.min(stripH, height - y);
-                    strip.eraseColor(Color.WHITE);
-                    Matrix matrix = new Matrix();
-                    float margin = marginMode == 0 ? 0.0f : marginMode == 1 ? 0.025f : marginMode == 2 ? 0.05f : 0.08f;
-                    float availableW = width * (1f - 2f * margin);
-                    float availableH = height * (1f - 2f * margin);
-                    float sx = availableW / (float) page.getWidth();
-                    float sy = availableH / (float) page.getHeight();
-                    float scale = scaleMode == 1 ? Math.max(sx, sy) : scaleMode == 2 ? sx : Math.min(sx, sy);
-                    float drawnW = page.getWidth() * scale;
-                    float drawnH = page.getHeight() * scale;
-                    float offsetX = (width - drawnW) / 2f;
-                    float offsetY = positionMode == 1 ? height * margin : positionMode == 2 ? height - drawnH - height * margin : (height - drawnH) / 2f;
-                    matrix.setScale(scale, scale);
-                    matrix.postTranslate(offsetX, offsetY - y);
-                    page.render(strip, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
-                    pack(strip, rows, y, width, height, stride, bits, row, packer);
-                }
-            } finally {
-                strip.recycle();
+        Tone(PrintSettings s, boolean photoContent) {
+            if (s.tone == 1) halftone = false;
+            else if (s.tone == 2) halftone = true;
+            else halftone = photoContent;
+            float contrast = s.contrast / 100f;
+            for (int i = 0; i < 256; i++) {
+                int v = Math.round((i - 128) * contrast + 128 + s.brightness * 2f);
+                lut[i] = Math.max(0, Math.min(255, v));
             }
-        } finally {
-            page.close();
         }
-        return bits;
+
+        boolean black(int v, int x, int y) {
+            if (!halftone) return v < cutoff;
+            int t = BAYER4[((y >> 1) & 3) * 4 + ((x >> 1) & 3)] * 16 + 8;
+            return v < t;
+        }
     }
 
-    private interface Drawer {
-        void draw(Canvas canvas, int width, int height);
+    public static Tone tone(PrintSettings s, boolean photoContent) {
+        return new Tone(s, photoContent);
     }
 
-    private static void drawStrips(int width, int height, byte[] bits, int stride, Drawer drawer) {
-        int stripH = 64;
-        Bitmap strip = Bitmap.createBitmap(width, stripH, Bitmap.Config.ARGB_8888);
+    private static int luma(int c) {
+        return (((c >> 16) & 255) * 54 + ((c >> 8) & 255) * 183 + (c & 255) * 19) >> 8;
+    }
+
+    /** Draw one region of a sheet onto target. y0 is the sheet row at target's top. */
+    public static void renderRegion(Planner.Plan plan, Planner.Sheet sheet, Bitmap target, int y0,
+                                    float dpi, boolean preview) {
+        PrintSettings s = plan.settings;
+        Canvas canvas = new Canvas(target);
+        canvas.drawColor(Color.WHITE);
+        float px = dpi / 25.4f;
+        for (Planner.Tile t : sheet.tiles) {
+            RectF dest = scale(t.destMm, px);
+            RectF box = scale(t.boxMm, px);
+            t.src.draw(target, canvas, y0, dest, box, dpi, preview);
+        }
+        canvas.save();
+        canvas.translate(0, -y0);
+        if (s.border) {
+            Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+            line.setColor(Color.BLACK);
+            line.setStyle(Paint.Style.STROKE);
+            line.setStrokeWidth(Math.max(1f, dpi / 200f));
+            for (Planner.Tile t : sheet.tiles) canvas.drawRect(scale(t.boxMm, px), line);
+        }
+        if (s.pageNumbers) {
+            Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+            text.setColor(Color.BLACK);
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setTextSize(9f / 72f * dpi);
+            float cx = sheet.widthMm(s.paper) * px / 2f;
+            float cy = (sheet.heightMm(s.paper) - 2.5f) * px;
+            canvas.drawText((sheet.index + 1) + " / " + plan.sheets.size(), cx, cy, text);
+        }
+        canvas.restore();
+    }
+
+    private static RectF scale(RectF mm, float px) {
+        return new RectF(mm.left * px, mm.top * px, mm.right * px, mm.bottom * px);
+    }
+
+    private static void prepareSheet(Planner.Sheet sheet, Planner.Plan plan, float dpi, boolean preview)
+            throws IOException {
+        float px = dpi / 25.4f;
+        for (Planner.Tile t : sheet.tiles) t.src.prepare(scale(t.destMm, px), dpi, preview);
+    }
+
+    private static void releaseSheet(Planner.Sheet sheet) {
+        for (Planner.Tile t : sheet.tiles) t.src.release();
+    }
+
+    /** Screen preview, drawn the way the printer will print it. */
+    public static Bitmap preview(Planner.Plan plan, Planner.Sheet sheet, boolean photoContent) throws IOException {
+        PrintSettings s = plan.settings;
+        Planner.layout(plan, sheet);
+        final float dpi = 150f;
+        int w = Math.max(1, Math.round(sheet.widthMm(s.paper) / 25.4f * dpi));
+        int h = Math.max(1, Math.round(sheet.heightMm(s.paper) / 25.4f * dpi));
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         try {
-            int[] row = new int[width];
-            MonochromePacker packer = new MonochromePacker(width, stride, bits);
-            for (int y = 0; y < height; y += stripH) {
-                int rows = Math.min(stripH, height - y);
-                strip.eraseColor(Color.WHITE);
-                Canvas canvas = new Canvas(strip);
-                canvas.save();
-                canvas.translate(0f, -y);
-                drawer.draw(canvas, width, height);
-                canvas.restore();
-                pack(strip, rows, y, width, height, stride, bits, row, packer);
+            prepareSheet(sheet, plan, dpi, true);
+            renderRegion(plan, sheet, bmp, 0, dpi, true);
+        } finally {
+            releaseSheet(sheet);
+        }
+        Tone tone = new Tone(s, photoContent);
+        int[] px = new int[w];
+        for (int y = 0; y < h; y++) {
+            bmp.getPixels(px, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x++) {
+                int v = tone.lut[luma(px[x])];
+                if (s.grayPreview) px[x] = Color.rgb(v, v, v);
+                else px[x] = tone.black(v, x, y) ? Color.BLACK : Color.WHITE;
+            }
+            bmp.setPixels(px, 0, w, 0, y, w, 1);
+        }
+        return bmp;
+    }
+
+    /** Full-page 1-bit raster (always portrait, as the printer expects). */
+    public static byte[] raster(Planner.Plan plan, Planner.Sheet sheet, boolean photoContent, Cancel cancel)
+            throws IOException {
+        PrintSettings s = plan.settings;
+        Paper paper = s.paper;
+        Planner.layout(plan, sheet);
+        boolean rotate = sheet.landscape;
+        int wl = paper.sheetWidthPx(rotate);
+        int hl = paper.sheetHeightPx(rotate);
+        int rasterW = rotate ? hl : wl;
+        int rasterH = rotate ? wl : hl;
+        int stride = Paper.stride(rasterW);
+        byte[] bits = new byte[stride * rasterH];
+        Tone tone = new Tone(s, photoContent);
+        int stripH = Math.max(64, Math.min(512, 2_000_000 / Math.max(1, wl)));
+        Bitmap strip = Bitmap.createBitmap(wl, stripH, Bitmap.Config.ARGB_8888);
+        int[] px = new int[wl * stripH];
+        try {
+            prepareSheet(sheet, plan, Paper.DPI, false);
+            for (int y = 0; y < hl; y += stripH) {
+                if (cancel != null && cancel.isCancelled()) throw new IOException("Cancelled");
+                int rows = Math.min(stripH, hl - y);
+                renderRegion(plan, sheet, strip, y, Paper.DPI, false);
+                strip.getPixels(px, 0, wl, 0, 0, wl, rows);
+                for (int r = 0; r < rows; r++) {
+                    int sy = y + r;
+                    int rowBase = r * wl;
+                    for (int x = 0; x < wl; x++) {
+                        int v = tone.lut[luma(px[rowBase + x])];
+                        if (!tone.black(v, x, sy)) continue;
+                        if (rotate) {
+                            int xr = hl - 1 - sy;
+                            bits[x * stride + (xr >> 3)] |= (byte) (0x80 >> (xr & 7));
+                        } else {
+                            bits[sy * stride + (x >> 3)] |= (byte) (0x80 >> (x & 7));
+                        }
+                    }
+                }
             }
         } finally {
             strip.recycle();
+            releaseSheet(sheet);
         }
-    }
-
-    /**
-     * Converts grayscale rows to a 1-bit image with continuous Floyd-Steinberg
-     * error diffusion. The error rows are retained between 64-row render strips,
-     * avoiding visible strip seams and preserving photographic mid-tones.
-     */
-    private static final class MonochromePacker {
-        private final int width;
-        private final int stride;
-        private final byte[] output;
-        private float[] currentError;
-        private float[] nextError;
-
-        MonochromePacker(int width, int stride, byte[] output) {
-            this.width = width;
-            this.stride = stride;
-            this.output = output;
-            currentError = new float[width + 2];
-            nextError = new float[width + 2];
-        }
-
-        void addRow(int[] pixels, int outputY) {
-            int base = outputY * stride;
-            for (int x = 0; x < width; x++) {
-                int color = pixels[x];
-                int alpha = (color >>> 24) & 255;
-                int red = (color >>> 16) & 255;
-                int green = (color >>> 8) & 255;
-                int blue = color & 255;
-                // Composite transparent pixels onto white paper before conversion.
-                red = (red * alpha + 255 * (255 - alpha)) / 255;
-                green = (green * alpha + 255 * (255 - alpha)) / 255;
-                blue = (blue * alpha + 255 * (255 - alpha)) / 255;
-                float gray = (red * 54f + green * 183f + blue * 19f) / 256f;
-                // Suppress scanner-like background speckle while retaining light grays.
-                if (gray >= 250f) gray = 255f;
-                else if (gray <= 5f) gray = 0f;
-                float adjusted = Math.max(0f, Math.min(255f, gray + currentError[x + 1]));
-                int quantized = adjusted < 128f ? 0 : 255;
-                if (quantized == 0) output[base + (x >> 3)] |= (byte) (0x80 >> (x & 7));
-                float error = adjusted - quantized;
-                currentError[x + 2] += error * (7f / 16f);
-                nextError[x] += error * (3f / 16f);
-                nextError[x + 1] += error * (5f / 16f);
-                nextError[x + 2] += error * (1f / 16f);
-            }
-            float[] swap = currentError;
-            currentError = nextError;
-            nextError = swap;
-            java.util.Arrays.fill(nextError, 0f);
-        }
-    }
-
-    private static void pack(Bitmap strip, int rows, int y, int width, int height,
-                             int stride, byte[] bits, int[] row, MonochromePacker packer) {
-        for (int r = 0; r < rows && y + r < height; r++) {
-            strip.getPixels(row, 0, width, 0, r, width, 1);
-            packer.addRow(row, y + r);
-        }
-    }
-
-    private static void drawTest(Canvas canvas, int width, int height) {
-        float margin = width * 0.08f;
-        Paint ink = new Paint(Paint.ANTI_ALIAS_FLAG);
-        ink.setColor(Color.BLACK);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setStrokeWidth(Math.max(2f, width * 0.0035f));
-        canvas.drawRect(margin, margin, width - margin, height - margin, ink);
-
-        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        fill.setColor(Color.BLACK);
-        fill.setStyle(Paint.Style.FILL);
-
-        Paint title = new Paint(Paint.ANTI_ALIAS_FLAG);
-        title.setColor(Color.BLACK);
-        title.setFakeBoldText(true);
-        title.setTextSize(width * 0.075f);
-        canvas.drawText("Noko Print", margin * 1.5f, height * 0.22f, title);
-
-        Paint body = new Paint(Paint.ANTI_ALIAS_FLAG);
-        body.setColor(Color.BLACK);
-        body.setTextSize(width * 0.034f);
-        float x = margin * 1.5f;
-        canvas.drawText("HP LaserJet M1005 MFP", x, height * 0.30f, body);
-        canvas.drawText("Machine KJ73EDG", x, height * 0.35f, body);
-        canvas.drawText("600 dpi  ·  plain paper", x, height * 0.40f, body);
-
-        Paint rule = new Paint(Paint.ANTI_ALIAS_FLAG);
-        rule.setColor(Color.BLACK);
-        rule.setStrokeWidth(Math.max(2f, width * 0.0025f));
-        canvas.drawLine(x, height * 0.45f, width - margin * 1.5f, height * 0.45f, rule);
-
-        body.setTextSize(width * 0.032f);
-        canvas.drawText("If you can read this, the phone", x, height * 0.52f, body);
-        canvas.drawText("is printing through the USB cable.", x, height * 0.57f, body);
-
-        float box = width * 0.08f;
-        float y = height * 0.68f;
-        for (int i = 0; i < 8; i++) {
-            if ((i & 1) == 0) {
-                canvas.drawRect(x + i * box, y, x + (i + 1) * box, y + box, fill);
-            } else {
-                canvas.drawRect(x + i * box, y, x + (i + 1) * box, y + box, ink);
-            }
-        }
+        return bits;
     }
 }

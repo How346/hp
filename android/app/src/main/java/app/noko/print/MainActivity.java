@@ -1,776 +1,478 @@
 package app.noko.print;
 
-import android.app.PendingIntent;
-import android.app.AlertDialog;
-import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.database.Cursor;
+import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Matrix;
-import android.graphics.RectF;
-import android.graphics.pdf.PdfRenderer;
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbDeviceConnection;
-import android.hardware.usb.UsbManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
-import android.provider.OpenableColumns;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.text.format.DateUtils;
+import android.view.LayoutInflater;
 import android.view.View;
-import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
-import android.widget.FrameLayout;
-import android.widget.ArrayAdapter;
-import android.widget.CheckBox;
-import android.widget.ProgressBar;
-import android.widget.ImageView;
+import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.SeekBar;
-import android.widget.Spinner;
-import android.widget.TextView;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.HorizontalScrollView;
-import android.util.TypedValue;
-import android.text.Layout;
-import android.text.StaticLayout;
-import android.text.TextPaint;
-import android.graphics.drawable.GradientDrawable;
-import org.xmlpull.v1.XmlPullParser;
-import android.util.Xml;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.IntentCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.Slider;
+import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.IntConsumer;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String ACTION_USB = "app.noko.print.USB_PERMISSION";
+    private static final String DOCX_MIME =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-    private final ExecutorService jobs = Executors.newSingleThreadExecutor();
-    private UsbManager usbManager;
-    private volatile UsbLink link;
-    private Uri document;
-    private String documentName = "";
-    private Kind kind = Kind.NONE;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final ExecutorService previewExec = Executors.newSingleThreadExecutor();
+    private final ExecutorService printExec = Executors.newSingleThreadExecutor();
+    private final ExecutorService loadExec = Executors.newSingleThreadExecutor();
+
+    private PrintSettings s;
+    private PrinterConnection conn;
+    private RecentStore recents;
+    private Document doc;
+    private int sheetIndex;
+    private int sheetTotal = 1;
+    private int pageTotal = 0;
+    private int previewGen;
     private volatile boolean busy;
-    private volatile boolean connecting;
-    private boolean landscape;
-    private boolean receiverRegistered;
-    private int documentPages = 1;
-    private int previewGeneration;
-    private int previewPageIndex = 0;
-    private LinearLayout previewThumbnails;
-    private TextView previewPageLabel;
+    private volatile boolean cancelled;
+    private boolean settingsBuilt;
+    private BottomSheetDialog settingsDialog;
 
-    private TextView fileView;
-    private TextView statusView;
+    private View home;
+    private View editor;
+    private TextView editorTitle;
+    private ImageView preview;
+    private ProgressBar previewSpinner;
+    private TextView previewMessage;
+    private TextView sheetLabel;
+    private TextView summary;
     private TextView copiesView;
-    private TextView densityView;
-    private Spinner paperSpinner;
-    private Spinner scaleSpinner;
-    private Spinner marginSpinner;
-    private Spinner positionSpinner;
-    private CheckBox collateBox;
-    private CheckBox tonerBox;
-    private ProgressBar progress;
+    private MaterialButton toneButton;
     private MaterialButton printButton;
-    private ImageView previewView;
-    private EditText pageFrom;
-    private EditText pageTo;
-    private TextView connectionState;
-    private int copies = 1;
+    private View jobPanel;
+    private TextView jobText;
+    private ProgressBar jobProgress;
+    private LinearLayout recentList;
+    private TextView recentEmpty;
+    private Bitmap shownBitmap;
 
-    private final ActivityResultLauncher<String[]> opener =
-            registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onDocument);
+    private final ActivityResultLauncher<String[]> pickDocument =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) loadUris(Collections.singletonList(uri), true);
+            });
 
-    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(intent.getAction())) {
-                UsbDevice detached;
-                if (Build.VERSION.SDK_INT >= 33) detached = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class);
-                else detached = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                if (detached != null && link != null && detached.getDeviceId() == linkDeviceId()) {
-                    closeLink();
-                    connecting = false;
-                    setConnectionState(false, "Printer unplugged. Reconnect when ready.");
-                }
-                return;
-            }
-            if (!ACTION_USB.equals(intent.getAction())) return;
-            connecting = false;
-            UsbDevice device;
-            if (Build.VERSION.SDK_INT >= 33) {
-                device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class);
-            } else {
-                device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-            }
-            boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
-            if (granted && device != null) {
-                jobs.execute(() -> attach(device));
-            } else {
-                setConnectionState(false, "USB permission was not granted. Tap Connect and allow access.");
-            }
-        }
-    };
+    private final ActivityResultLauncher<String[]> pickPhotos =
+            registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
+                if (uris != null && !uris.isEmpty()) loadUris(new ArrayList<>(uris), true);
+            });
 
-    private enum Kind { NONE, PDF, IMAGE, TEXT, DOCX }
+    private final Runnable previewTask = this::refreshPreview;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        usbManager = (UsbManager) getSystemService(USB_SERVICE);
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        WindowInsetsControllerCompat bars = new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
+        bars.setAppearanceLightStatusBars(!night);
+        bars.setAppearanceLightNavigationBars(!night);
 
-        fileView = findViewById(R.id.file_name);
-        previewView = findViewById(R.id.preview);
-        previewThumbnails = findViewById(R.id.preview_thumbnails);
-        previewPageLabel = findViewById(R.id.preview_page_label);
-        pageFrom = findViewById(R.id.page_from);
-        pageTo = findViewById(R.id.page_to);
-        connectionState = findViewById(R.id.connection_state);
-        statusView = findViewById(R.id.status);
+        s = PrintSettings.load(this);
+        recents = new RecentStore(this);
+
+        home = findViewById(R.id.home);
+        editor = findViewById(R.id.editor);
+        editorTitle = findViewById(R.id.editor_title);
+        preview = findViewById(R.id.preview);
+        previewSpinner = findViewById(R.id.preview_spinner);
+        previewMessage = findViewById(R.id.preview_message);
+        sheetLabel = findViewById(R.id.sheet_label);
+        summary = findViewById(R.id.summary);
         copiesView = findViewById(R.id.copies);
-        densityView = findViewById(R.id.density_label);
-        paperSpinner = findViewById(R.id.paper);
-        tonerBox = findViewById(R.id.toner);
-        collateBox = findViewById(R.id.collate);
-        scaleSpinner = findViewById(R.id.scale_mode);
-        marginSpinner = findViewById(R.id.margins);
-        positionSpinner = findViewById(R.id.position);
-        scaleSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Fit to page", "Fill page (crop edges)", "Fit width"}));
-        marginSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"No margins", "Narrow", "Normal", "Wide"}));
-        positionSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Center", "Top", "Bottom"}));
-        progress = findViewById(R.id.progress);
-        printButton = findViewById(R.id.print);
-        SeekBar density = findViewById(R.id.density);
+        toneButton = findViewById(R.id.btn_tone);
+        printButton = findViewById(R.id.btn_print);
+        jobPanel = findViewById(R.id.job_panel);
+        jobText = findViewById(R.id.job_text);
+        jobProgress = findViewById(R.id.job_progress);
+        recentList = findViewById(R.id.recent_list);
+        recentEmpty = findViewById(R.id.recent_empty);
 
-        paperSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Paper.values()));
-        Spinner orientationSpinner = findViewById(R.id.orientation);
-        orientationSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Portrait", "Landscape"}));
-        orientationSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                landscape = position == 1;
-                refreshPreview();
+        conn = new PrinterConnection(this, this::onConnectionState);
+
+        findViewById(R.id.tile_docs).setOnClickListener(v -> pickDocument.launch(new String[]{
+                "application/pdf", "text/*", DOCX_MIME, "image/*"}));
+        findViewById(R.id.tile_photos).setOnClickListener(v -> pickPhotos.launch(new String[]{"image/*"}));
+        findViewById(R.id.tile_text).setOnClickListener(v -> askForText());
+        findViewById(R.id.tile_test).setOnClickListener(v ->
+                openDocument(new Document(Document.Kind.TEST, "Test page", null, null, 1)));
+        findViewById(R.id.conn_action).setOnClickListener(v -> conn.connectNow());
+        findViewById(R.id.conn_row).setOnClickListener(v -> conn.connectNow());
+
+        findViewById(R.id.btn_back).setOnClickListener(v -> showHome());
+        findViewById(R.id.btn_settings).setOnClickListener(v -> showSettings());
+        findViewById(R.id.btn_settings_top).setOnClickListener(v -> showSettings());
+        findViewById(R.id.btn_prev).setOnClickListener(v -> moveSheet(-1));
+        findViewById(R.id.btn_next).setOnClickListener(v -> moveSheet(1));
+        findViewById(R.id.copies_minus).setOnClickListener(v -> setCopies(s.copies - 1));
+        findViewById(R.id.copies_plus).setOnClickListener(v -> setCopies(s.copies + 1));
+        findViewById(R.id.btn_cancel).setOnClickListener(v -> {
+            cancelled = true;
+            jobText.setText("Cancelling…");
+        });
+        printButton.setOnClickListener(v -> onPrint());
+        toneButton.setOnClickListener(v -> {
+            s.grayPreview = !s.grayPreview;
+            s.save(this);
+            updateToneButton();
+            schedulePreview();
+        });
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (editor.getVisibility() == View.VISIBLE) {
+                    showHome();
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                }
             }
-            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-        });
-        paperSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { refreshPreview(); }
-            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-        });
-        android.widget.AdapterView.OnItemSelectedListener previewSettingsListener =
-                new android.widget.AdapterView.OnItemSelectedListener() {
-                    @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { refreshPreview(); }
-                    @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-                };
-        scaleSpinner.setOnItemSelectedListener(previewSettingsListener);
-        marginSpinner.setOnItemSelectedListener(previewSettingsListener);
-        positionSpinner.setOnItemSelectedListener(previewSettingsListener);
-        density.setProgress(2);
-        density.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                densityView.setText("Print darkness · " + (progress + 1) + " of 5");
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        findViewById(R.id.pick).setOnClickListener(v -> opener.launch(new String[]{
-                "application/pdf", "text/plain", "image/*",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/rtf", "text/rtf", "*/*"
-        }));
-        findViewById(R.id.test_page).setOnClickListener(v -> {
-            kind = Kind.NONE;
-            document = null;
-            documentName = "Built-in test page";
-            documentPages = 1;
-            previewPageIndex = 0;
-            pageFrom.setText("1"); pageTo.setText("1");
-            fileView.setText(documentName);
-            refreshPreview();
-            say("Test page ready. Connect the printer, then print.");
-        });
-        findViewById(R.id.copies_minus).setOnClickListener(v -> setCopies(copies - 1));
-        findViewById(R.id.copies_plus).setOnClickListener(v -> setCopies(copies + 1));
-        findViewById(R.id.connect).setOnClickListener(v -> connectPrinter());
-        printButton.setOnClickListener(v -> print());
-        // The preview opens a high-resolution viewer; pinch to zoom and drag to inspect.
-        previewView.setOnClickListener(v -> showZoomPreview());
+        copiesView.setText(String.valueOf(s.copies));
+        updateToneButton();
+        applyLayoutOrientation();
+        refreshRecents();
+        onConnectionState(conn.state(), conn.message());
+        if (savedInstanceState == null) handleIntent(getIntent());
+    }
 
-        IntentFilter filter = new IntentFilter(ACTION_USB);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(usbReceiver, filter);
-        receiverRegistered = true;
-        refreshPreview();
-        say("Plug the printer in with an OTG cable. The machine code on this app is KJ73EDG.");
+    @Override
+    protected void onStart() {
+        super.onStart();
+        conn.start();
+    }
+
+    @Override
+    protected void onStop() {
+        conn.stop();
+        super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        if (receiverRegistered) unregisterReceiver(usbReceiver);
-        closeLink();
-        jobs.shutdownNow();
+        main.removeCallbacksAndMessages(null);
+        conn.release();
+        previewExec.shutdownNow();
+        printExec.shutdownNow();
+        loadExec.shutdownNow();
         super.onDestroy();
     }
 
-    private void setCopies(int next) {
-        copies = Math.max(1, Math.min(20, next));
-        copiesView.setText(String.valueOf(copies));
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
     }
 
-    private void say(String line) {
-        runOnUiThread(() -> statusView.setText(line));
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        applyLayoutOrientation();
     }
 
-    private void onDocument(Uri uri) {
-        if (uri == null) return;
-        document = uri;
-        documentName = nameOf(uri);
-        String type = getContentResolver().getType(uri);
-        String lowerName = documentName == null ? "" : documentName.toLowerCase(java.util.Locale.ROOT);
-        previewPageIndex = 0;
-        if ((type != null && type.equalsIgnoreCase("application/pdf")) || lowerName.endsWith(".pdf")) {
-            kind = Kind.PDF;
-        } else if ((type != null && type.startsWith("image/")) || isImageName(lowerName)) {
-            kind = Kind.IMAGE;
-        } else if (lowerName.endsWith(".docx") || (type != null && type.equalsIgnoreCase("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))) {
-            kind = Kind.DOCX;
-        } else if ((type != null && (type.startsWith("text/") || type.equalsIgnoreCase("application/rtf"))) || isTextName(lowerName) || lowerName.endsWith(".rtf")) {
-            kind = Kind.TEXT;
+    // ------------------------------------------------------------------ layout
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private void applyLayoutOrientation() {
+        boolean land = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        LinearLayout body = findViewById(R.id.editor_body);
+        View previewPanel = findViewById(R.id.preview_panel);
+        View actionPanel = findViewById(R.id.action_panel);
+        LinearLayout.LayoutParams pl;
+        LinearLayout.LayoutParams al;
+        if (land) {
+            body.setOrientation(LinearLayout.HORIZONTAL);
+            pl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+            al = new LinearLayout.LayoutParams(dp(320), ViewGroup.LayoutParams.MATCH_PARENT);
         } else {
-            kind = Kind.NONE;
-            document = null;
-            say("Unsupported file. Choose PDF, DOCX, RTF, TXT, JPG or PNG.");
+            body.setOrientation(LinearLayout.VERTICAL);
+            pl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+            al = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        previewPanel.setLayoutParams(pl);
+        actionPanel.setLayoutParams(al);
+    }
+
+    private void showHome() {
+        if (busy) {
+            snack("A print job is running. Cancel it first.");
             return;
         }
-        fileView.setText(documentName);
-        documentPages = 1;
-        if (kind == Kind.PDF) {
-            try (ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(uri, "r")) {
-                if (fd != null) documentPages = Rasterizer.pdfPageCount(fd);
-            } catch (Exception e) { say("Could not read PDF page count: " + e.getMessage()); }
-        }
-        pageFrom.setText("1"); pageTo.setText(String.valueOf(documentPages));
-        refreshPreview();
-        if (kind == Kind.PDF) buildPdfThumbnails(uri, documentPages);
-        else clearPdfThumbnails();
-        if (kind == Kind.DOCX) {
-            say("DOCX loaded. This built-in reader extracts text only; for original fonts, tables, spacing and exact layout, save/export the Word file as PDF before printing.");
-        } else {
-            say(documentPages + " page" + (documentPages == 1 ? "" : "s") + " ready.");
-        }
+        editor.setVisibility(View.GONE);
+        home.setVisibility(View.VISIBLE);
+        refreshRecents();
     }
 
-    private boolean isImageName(String name) {
-        return name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".gif");
+    private void showEditor() {
+        home.setVisibility(View.GONE);
+        editor.setVisibility(View.VISIBLE);
     }
 
-    private void clearPdfThumbnails() {
-        if (previewThumbnails != null) previewThumbnails.removeAllViews();
-        if (previewPageLabel != null) previewPageLabel.setText("Preview");
+    private void snack(String text) {
+        Snackbar.make(findViewById(R.id.root), text, Snackbar.LENGTH_LONG).show();
     }
 
-    private void buildPdfThumbnails(Uri uri, int count) {
-        if (previewThumbnails == null) return;
-        previewThumbnails.removeAllViews();
-        jobs.execute(() -> {
-            try (ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(uri, "r")) {
-                if (fd == null) return;
-                PdfRenderer renderer = new PdfRenderer(fd);
-                try {
-                    for (int i = 0; i < renderer.getPageCount(); i++) {
-                        final int pageNumber = i;
-                        PdfRenderer.Page page = renderer.openPage(i);
-                        Bitmap thumb = Bitmap.createBitmap(88, 116, Bitmap.Config.ARGB_8888);
-                        thumb.eraseColor(Color.WHITE);
-                        float scale = Math.min(80f / page.getWidth(), 108f / page.getHeight());
-                        Matrix matrix = new Matrix(); matrix.setScale(scale, scale);
-                        page.render(thumb, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-                        page.close();
-                        runOnUiThread(() -> {
-                            ImageView item = new ImageView(this);
-                            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(76), dp(104));
-                            lp.setMargins(dp(4), dp(4), dp(4), dp(4));
-                            item.setLayoutParams(lp); item.setPadding(dp(3), dp(3), dp(3), dp(3));
-                            item.setScaleType(ImageView.ScaleType.FIT_CENTER); item.setImageBitmap(thumb);
-                            item.setContentDescription("Preview page " + (pageNumber + 1));
-                            item.setBackground(makeThumbBackground(pageNumber == previewPageIndex));
-                            item.setOnClickListener(v -> { previewPageIndex = pageNumber; refreshPreview(); updateThumbnailSelection(); });
-                            previewThumbnails.addView(item);
-                        });
-                    }
-                } finally { renderer.close(); }
-            } catch (Exception e) { say("Some page thumbnails could not be created: " + e.getMessage()); }
-        });
+    // -------------------------------------------------------------- connection
+
+    private void tint(View dot, int colorRes) {
+        dot.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, colorRes)));
     }
 
-    private int dp(float value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
-
-    private GradientDrawable makeThumbBackground(boolean selected) {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.WHITE); bg.setCornerRadius(dp(8));
-        bg.setStroke(dp(selected ? 2 : 1), selected ? Color.rgb(22, 131, 255) : Color.LTGRAY);
-        return bg;
-    }
-
-    private void updateThumbnailSelection() {
-        if (previewThumbnails == null) return;
-        for (int i = 0; i < previewThumbnails.getChildCount(); i++) {
-            previewThumbnails.getChildAt(i).setBackground(makeThumbBackground(i == previewPageIndex));
-        }
-    }
-
-    private boolean isTextName(String name) {
-        return name.endsWith(".txt") || name.endsWith(".csv") || name.endsWith(".log")
-                || name.endsWith(".md");
-    }
-
-    private String nameOf(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (idx >= 0) return cursor.getString(idx);
-            }
-        } catch (RuntimeException ignored) {
-            // fall through
-        }
-        return "Document";
-    }
-
-    private void connectPrinter() {
-        if (connecting || (link != null && link.isOpen())) {
-            if (link != null && link.isOpen()) setConnectionState(true, "Printer is connected and ready.");
-            return;
-        }
-        connecting = true;
-        say("Looking for HP LaserJet M1005…");
-        UsbDevice found = null;
-        for (UsbDevice device : usbManager.getDeviceList().values()) {
-            if (UsbLink.isM1005(device)) {
-                found = device;
+    private void onConnectionState(PrinterConnection.State st, String msg) {
+        TextView title = findViewById(R.id.conn_title);
+        TextView detail = findViewById(R.id.conn_detail);
+        MaterialButton action = findViewById(R.id.conn_action);
+        TextView rowText = findViewById(R.id.conn_text2);
+        View dot = findViewById(R.id.conn_dot);
+        View dot2 = findViewById(R.id.conn_dot2);
+        int color;
+        String t;
+        String row;
+        String button = null;
+        switch (st) {
+            case CONNECTED:
+                color = R.color.ok;
+                t = "Printer connected";
+                row = "HP M1005 connected";
                 break;
+            case CONNECTING:
+                color = R.color.warn;
+                t = "Connecting…";
+                row = "Connecting to printer…";
+                break;
+            case PERMISSION:
+                color = R.color.warn;
+                t = "Allow USB access";
+                row = "Waiting for USB permission";
+                button = "Allow";
+                break;
+            case ERROR:
+                color = R.color.err;
+                t = "Connection problem";
+                row = "Printer problem · tap to retry";
+                button = "Retry";
+                break;
+            default:
+                color = R.color.idle;
+                t = "No printer connected";
+                row = "Printer not connected · tap to connect";
+                button = "Connect";
+        }
+        title.setText(t);
+        detail.setText(msg);
+        detail.setVisibility(msg == null || msg.isEmpty() ? View.GONE : View.VISIBLE);
+        rowText.setText(row);
+        tint(dot, color);
+        tint(dot2, color);
+        if (button == null) {
+            action.setVisibility(View.GONE);
+        } else {
+            action.setText(button);
+            action.setVisibility(View.VISIBLE);
+        }
+    }
+
+    // --------------------------------------------------------------- documents
+
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (action == null) return;
+        if (android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+            conn.scanSoon();
+            return;
+        }
+        if (Intent.ACTION_VIEW.equals(action) && intent.getData() != null) {
+            loadUris(Collections.singletonList(intent.getData()), false);
+        } else if (Intent.ACTION_SEND.equals(action)) {
+            Uri stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri.class);
+            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            if (stream != null) {
+                loadUris(Collections.singletonList(stream), false);
+            } else if (text != null && !text.isEmpty()) {
+                openDocument(new Document(Document.Kind.TEXT, "Shared text", null, text, 0));
             }
-        }
-        if (found == null) {
-            connecting = false;
-            say("Printer not found. Check OTG and power.");
-            return;
-        }
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= 31) {
-            flags |= PendingIntent.FLAG_MUTABLE;
-        }
-        // Android 14+ blocks mutable PendingIntents with implicit intents.
-        // Setting our package keeps the USB permission callback explicit while
-        // still allowing UsbManager to attach its permission/device extras.
-        Intent permissionIntent = new Intent(ACTION_USB).setPackage(getPackageName());
-        PendingIntent pending = PendingIntent.getBroadcast(this, 1001, permissionIntent, flags);
-        usbManager.requestPermission(found, pending);
-    }
-
-    private int linkDeviceId() { return link == null ? -1 : link.deviceId(); }
-
-    private volatile String lastConnectionLabel = "";
-    private void setConnectionState(boolean connected, String message) {
-        final String label = (connected ? "Connected · " : "Not connected · ") + "USB OTG";
-        runOnUiThread(() -> {
-            if (!label.equals(lastConnectionLabel)) {
-                connectionState.setText(label);
-                lastConnectionLabel = label;
-            }
-            say(message);
-        });
-    }
-
-    private synchronized void attach(UsbDevice device) {
-        if (link != null && link.isOpen() && link.deviceId() == device.getDeviceId()) {
-            connecting = false;
-            setConnectionState(true, "Printer connection is stable.");
-            return;
-        }
-        if (link != null && link.isOpen() && link.deviceId() != device.getDeviceId()) {
-            closeLink();
-        }
-        if (link != null && link.isOpen()) {
-            connecting = false;
-            setConnectionState(true, "Printer connection is ready.");
-            return;
-        }
-        UsbDeviceConnection connection = usbManager.openDevice(device);
-        try {
-            link = UsbLink.open(device, connection);
-            connecting = false;
-            setConnectionState(true, "Connected. " + link.describe());
-        } catch (Exception e) {
-            connecting = false;
-            if (connection != null) {
-                try { connection.close(); } catch (RuntimeException ignored) {}
-            }
-            setConnectionState(false, e.getMessage() == null ? "Could not connect to printer." : e.getMessage());
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> list = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri.class);
+            if (list != null && !list.isEmpty()) loadUris(list, false);
         }
     }
 
-    private synchronized void closeLink() {
-        UsbLink old = link;
-        link = null;
-        if (old != null) old.close();
-    }
-
-    private void print() {
-        if (busy) return;
-        if (document == null && !"Built-in test page".equals(documentName)) {
-            say("Choose a PDF, a photo, or the test page first.");
-            return;
-        }
-        if (link == null || !link.isOpen()) {
-            say("Connect the printer first.");
-            connectPrinter();
-            return;
-        }
-        Paper paper = (Paper) paperSpinner.getSelectedItem();
-        int from = parsePage(pageFrom, 1);
-        int to = parsePage(pageTo, documentPages);
-        if (kind == Kind.PDF && (from < 1 || to < from || to > documentPages)) {
-            say("Enter a valid page range from 1 to " + documentPages + ".");
-            return;
-        }
-        // Keep the printer's internal engine setting fixed; users should not need to tune DPI/density.
-        int density = 3;
-        boolean econo = tonerBox.isChecked();
-        int copyCount = copies;
-        int marginMode = marginSpinner.getSelectedItemPosition();
-        int scaleMode = scaleSpinner.getSelectedItemPosition();
-        int positionMode = positionSpinner.getSelectedItemPosition();
-        boolean collate = collateBox.isChecked();
-        busy = true;
-        progress.setVisibility(View.VISIBLE);
-        printButton.setEnabled(false);
-        say("Sending the page…");
-        jobs.execute(() -> {
-            try {
-                runPrint(paper, density, econo, copyCount, landscape, from, to,
-                        marginMode, scaleMode, positionMode, collate);
-                say("Sent. The M1005 should pull a sheet now.");
-            } catch (Exception e) {
-                if (link == null || !link.isOpen()) {
-                    closeLink();
-                    setConnectionState(false, e.getMessage() == null ? "Printer connection lost. Reconnect and retry." : e.getMessage());
-                } else say(e.getMessage() == null ? "Print failed." : e.getMessage());
-            } finally {
-                busy = false;
-                runOnUiThread(() -> {
-                    progress.setVisibility(View.GONE);
-                    printButton.setEnabled(true);
-                });
-            }
-        });
-    }
-
-    private void runPrint(Paper paper, int density, boolean econo, int copyCount, boolean landscape,
-                          int fromPage, int toPage, int marginMode, int scaleMode,
-                          int positionMode, boolean collate) throws IOException {
-        if ("Built-in test page".equals(documentName) && document == null) {
-            byte[] bits = Rasterizer.testPage(paper, landscape);
-            sendPacked(bits, paper, density, econo, copyCount, landscape);
-            return;
-        }
-        if (kind == Kind.PDF) {
-            try (ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(document, "r")) {
-                if (fd == null) throw new IOException("Could not open that PDF");
-                PdfRenderer renderer = new PdfRenderer(fd);
-                try {
-                    int count = renderer.getPageCount();
-                    int first = Math.max(0, fromPage - 1);
-                    int last = Math.min(count - 1, toPage - 1);
-                    int selectedCount = last - first + 1;
-                    int total = selectedCount * copyCount;
-                    int sent = 0;
-                    if (collate) {
-                        for (int copy = 0; copy < copyCount; copy++) {
-                            for (int i = first; i <= last; i++) {
-                                say("Printing sheet " + (++sent) + " of " + total);
-                                byte[] bits = Rasterizer.pdfPage(renderer, i, paper, landscape,
-                                        marginMode, scaleMode, positionMode);
-                                sendPacked(bits, paper, density, econo, 1, landscape);
-                            }
-                        }
+    private void askForText() {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setMinLines(6);
+        input.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        input.setHint("Type or paste what you want to print");
+        FrameLayoutPad wrap = new FrameLayoutPad(this, input, dp(20));
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Type or paste")
+                .setView(wrap)
+                .setPositiveButton("Preview", (d, w) -> {
+                    String text = input.getText().toString();
+                    if (text.trim().isEmpty()) {
+                        snack("Nothing to print yet.");
                     } else {
-                        for (int i = first; i <= last; i++) {
-                            byte[] bits = Rasterizer.pdfPage(renderer, i, paper, landscape,
-                                    marginMode, scaleMode, positionMode);
-                            for (int copy = 0; copy < copyCount; copy++) {
-                                say("Printing sheet " + (++sent) + " of " + total);
-                                sendPacked(bits, paper, density, econo, 1, landscape);
-                            }
+                        openDocument(new Document(Document.Kind.TEXT, "Typed text", null, text, 0));
+                    }
+                })
+                .setNeutralButton("Paste", (d, w) -> {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    ClipData clip = cm == null ? null : cm.getPrimaryClip();
+                    if (clip != null && clip.getItemCount() > 0) {
+                        CharSequence text = clip.getItemAt(0).coerceToText(this);
+                        if (text != null && text.toString().trim().length() > 0) {
+                            openDocument(new Document(Document.Kind.TEXT, "Pasted text", null, text.toString(), 0));
+                            return;
                         }
                     }
-                } finally {
-                    renderer.close();
-                }
-            }
-            return;
-        }
-        if (kind == Kind.DOCX || kind == Kind.TEXT) {
-            String text = kind == Kind.DOCX ? readDocx(document) : readText(document);
-            java.util.List<byte[]> pages = Rasterizer.textPages(text, paper, landscape);
-            int total = pages.size() * copyCount;
-            int sent = 0;
-            for (int copy = 0; copy < copyCount; copy++) {
-                for (byte[] bits : pages) {
-                    say("Printing document page " + (++sent) + " of " + total);
-                    sendPacked(bits, paper, density, econo, 1, landscape);
-                }
-            }
-            return;
-        }
-        if (kind == Kind.IMAGE) {
-            Bitmap bitmap = decodeImage(document);
-            try {
-                byte[] bits = Rasterizer.imagePage(bitmap, paper, landscape,
-                        marginMode, scaleMode, positionMode);
-                sendPacked(bits, paper, density, econo, copyCount, landscape);
-            } finally {
-                bitmap.recycle();
-            }
-            return;
-        }
-        String text = readText(document);
-        java.util.List<byte[]> pages = Rasterizer.textPages(text, paper, landscape);
-        for (int copy = 0; copy < copyCount; copy++) for (byte[] bits : pages) sendPacked(bits, paper, density, econo, 1, landscape);
-    }
-
-    private void sendPacked(byte[] bits, Paper paper, int density, boolean econo, int copyCount, boolean landscape) throws IOException {
-        if (link == null) throw new IOException("Printer disconnected");
-        byte[] job = XqxEncoder.encode(
-                bits,
-                paper.widthPx(landscape),
-                paper.heightPx(landscape),
-                Paper.stride(paper.widthPx(landscape)),
-                Paper.DPI,
-                Paper.DPI,
-                paper.code,
-                density,
-                econo ? 1 : 0,
-                copyCount);
-        link.write(job);
-    }
-
-    private int parsePage(EditText field, int fallback) {
-        try { return Integer.parseInt(field.getText().toString().trim()); }
-        catch (Exception ignored) { return fallback; }
-    }
-
-    private void showZoomPreview() {
-        if (previewView.getDrawable() == null) {
-            say("Choose a document to preview it.");
-            return;
-        }
-        Bitmap source = ((android.graphics.drawable.BitmapDrawable) previewView.getDrawable()).getBitmap();
-        ImageView image = new ImageView(this);
-        image.setImageBitmap(source);
-        image.setScaleType(ImageView.ScaleType.MATRIX);
-        Matrix transform = new Matrix();
-        image.setImageMatrix(transform);
-        final float[] scale = {1f};
-        ScaleGestureDetector detector = new ScaleGestureDetector(this,
-                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                    @Override public boolean onScale(ScaleGestureDetector d) {
-                        float next = Math.max(1f, Math.min(6f, scale[0] * d.getScaleFactor()));
-                        float factor = next / scale[0];
-                        transform.postScale(factor, factor, d.getFocusX(), d.getFocusY());
-                        scale[0] = next;
-                        image.setImageMatrix(transform);
-                        return true;
-                    }
-                });
-        final float[] lastTouch = {-1f, -1f};
-        image.setOnTouchListener((v, event) -> {
-            detector.onTouchEvent(event);
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                lastTouch[0] = event.getX(); lastTouch[1] = event.getY();
-            } else if (event.getAction() == MotionEvent.ACTION_MOVE && !detector.isInProgress() && scale[0] > 1f) {
-                float dx = event.getX() - lastTouch[0];
-                float dy = event.getY() - lastTouch[1];
-                transform.postTranslate(dx, dy);
-                image.setImageMatrix(transform);
-                lastTouch[0] = event.getX(); lastTouch[1] = event.getY();
-            } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                lastTouch[0] = -1f; lastTouch[1] = -1f;
-            }
-            return true;
-        });
-        FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(Color.BLACK);
-        frame.addView(image, new FrameLayout.LayoutParams(-1, -1));
-        new AlertDialog.Builder(this)
-                .setTitle("Preview · Pinch to zoom")
-                .setView(frame)
-                .setPositiveButton("Close", null)
+                    snack("The clipboard is empty.");
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 
-    private void refreshPreview() {
-        if (previewView == null) return;
-        final int generation = ++previewGeneration;
-        final Paper selectedPaper = (Paper) paperSpinner.getSelectedItem();
-        final Paper previewPaper = selectedPaper == null ? Paper.A4 : selectedPaper;
-        final boolean previewLandscape = landscape;
-        final Uri previewDocument = document;
-        final Kind previewKind = kind;
-        final int selectedPreviewPage = previewPageIndex;
-        jobs.execute(() -> {
-            Bitmap bitmap = null;
-            try {
-                int w = 1200;
-                double ratio = previewLandscape
-                        ? previewPaper.widthMm / previewPaper.heightMm
-                        : previewPaper.heightMm / previewPaper.widthMm;
-                int h = Math.max(300, (int) Math.round(w * ratio));
-                bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bitmap);
-                canvas.drawColor(Color.WHITE);
-                Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
-                border.setColor(Color.BLACK); border.setStyle(Paint.Style.STROKE); border.setStrokeWidth(2f);
-                canvas.drawRect(8, 8, w - 8, h - 8, border);
-                if (previewDocument != null && previewKind == Kind.IMAGE) {
-                    Bitmap source = decodeImage(previewDocument);
-                    try {
-                        float margin = 22f;
-                        float scale = Math.min((w - margin * 2) / source.getWidth(), (h - margin * 2) / source.getHeight());
-                        float dw = source.getWidth() * scale, dh = source.getHeight() * scale;
-                        Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                        canvas.drawBitmap(source, null, new RectF((w-dw)/2, (h-dh)/2, (w+dw)/2, (h+dh)/2), imagePaint);
-                    } finally { source.recycle(); }
-                } else if (previewDocument != null && previewKind == Kind.PDF) {
-                    try (ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(previewDocument, "r")) {
-                        if (fd != null) {
-                            PdfRenderer renderer = new PdfRenderer(fd);
-                            try {
-                                int safePage = Math.max(0, Math.min(selectedPreviewPage, renderer.getPageCount() - 1));
-                                PdfRenderer.Page page = renderer.openPage(safePage);
-                                try {
-                                    Bitmap pageBitmap = Bitmap.createBitmap(w - 44, h - 44, Bitmap.Config.ARGB_8888);
-                                    pageBitmap.eraseColor(Color.WHITE);
-                                    float scale = Math.min((w - 44f) / page.getWidth(), (h - 44f) / page.getHeight());
-                                    Matrix matrix = new Matrix(); matrix.setScale(scale, scale);
-                                    page.render(pageBitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-                                    canvas.drawBitmap(pageBitmap, (w-pageBitmap.getWidth())/2f, (h-pageBitmap.getHeight())/2f, null);
-                                    pageBitmap.recycle();
-                                } finally { page.close(); }
-                            } finally { renderer.close(); }
-                        }
-                    }
-                } else if (previewDocument != null && (previewKind == Kind.TEXT || previewKind == Kind.DOCX)) {
-                    String body = previewKind == Kind.DOCX ? readDocx(previewDocument) : readText(previewDocument);
-                    TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-                    text.setColor(Color.BLACK); text.setTextSize(16f);
-                    StaticLayout layout = StaticLayout.Builder.obtain(body, 0, body.length(), text, w - 64)
-                            .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(0f, 1.2f).build();
-                    canvas.save(); canvas.translate(32, 30); canvas.clipRect(0, 0, w - 64, h - 60); layout.draw(canvas); canvas.restore();
-                } else {
-                    Paint text = new Paint(Paint.ANTI_ALIAS_FLAG); text.setColor(Color.BLACK); text.setTextSize(22f); text.setFakeBoldText(true);
-                    canvas.drawText("Noko Print", 34, 82, text);
-                    text.setTextSize(13f); text.setFakeBoldText(false);
-                    canvas.drawText("HP LaserJet M1005", 34, 112, text);
-                    canvas.drawText(previewPaper.label + " · 600 DPI", 34, 136, text);
-                    canvas.drawLine(34, 158, w - 34, 158, text);
-                    canvas.drawText("Black and white print preview", 34, 190, text);
+    /** Small helper that pads a view inside a dialog. */
+    private static final class FrameLayoutPad extends android.widget.FrameLayout {
+        FrameLayoutPad(Context ctx, View child, int pad) {
+            super(ctx);
+            setPadding(pad, pad / 2, pad, 0);
+            addView(child, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+    }
+
+    private void loadUris(List<Uri> uris, boolean persist) {
+        if (uris.isEmpty()) return;
+        final List<Uri> picked = new ArrayList<>(uris);
+        if (persist) {
+            for (Uri u : picked) {
+                try {
+                    getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException | IllegalArgumentException ignored) {
+                    // not every provider offers persistable access
                 }
-                int[] pixels = new int[bitmap.getWidth() * bitmap.getHeight()];
-                bitmap.getPixels(pixels, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-                for (int i = 0; i < pixels.length; i++) {
-                    int c = pixels[i];
-                    int lum = (((c >> 16) & 255) * 54 + ((c >> 8) & 255) * 183 + (c & 255) * 19) >> 8;
-                    pixels[i] = Color.rgb(lum, lum, lum);
-                }
-                bitmap.setPixels(pixels, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-                Bitmap ready = bitmap;
-                runOnUiThread(() -> {
-                    if (!isFinishing() && generation == previewGeneration) {
-                        previewView.setImageBitmap(ready);
-                        if (previewPageLabel != null) previewPageLabel.setText(previewKind == Kind.PDF ? "Page " + (selectedPreviewPage + 1) + " of " + documentPages : "Print preview");
-                        updateThumbnailSelection();
-                    }
-                    else ready.recycle();
-                });
-            } catch (Exception ignored) {
-                if (bitmap != null) bitmap.recycle();
             }
+        }
+        snack("Opening…");
+        loadExec.execute(() -> {
+            String error = null;
+            Document result = null;
+            Uri first = picked.get(0);
+            try {
+                String firstName = Document.nameOf(getContentResolver(), first);
+                Document.Kind kind = Document.detect(getContentResolver(), first, firstName);
+                if (kind == null) {
+                    error = "That file type isn't supported. Choose a PDF, Word, text or picture file.";
+                } else if (kind == Document.Kind.PDF) {
+                    int pages = countPdf(first);
+                    result = new Document(kind, firstName, Collections.singletonList(first), null, pages);
+                } else if (kind == Document.Kind.IMAGES) {
+                    List<Uri> images = new ArrayList<>();
+                    for (Uri u : picked) {
+                        String n = Document.nameOf(getContentResolver(), u);
+                        if (Document.detect(getContentResolver(), u, n) == Document.Kind.IMAGES) images.add(u);
+                    }
+                    String label = images.size() > 1 ? firstName + " + " + (images.size() - 1) + " more" : firstName;
+                    result = new Document(kind, label, images, null, images.size());
+                } else {
+                    String type = getContentResolver().getType(first);
+                    String lower = firstName.toLowerCase(Locale.ROOT);
+                    String text = Document.isDocx(type, lower) ? readDocx(first) : readText(first);
+                    result = new Document(kind, firstName, Collections.singletonList(first), text, 0);
+                }
+            } catch (SecurityException e) {
+                error = "Access to that file has expired. Pick it again from Documents.";
+            } catch (IOException e) {
+                error = e.getMessage() == null ? "Could not open that file." : e.getMessage();
+            } catch (RuntimeException e) {
+                error = "Could not open that file.";
+            }
+            final Document ready = result;
+            final String err = error;
+            main.post(() -> {
+                if (ready != null) {
+                    openDocument(ready);
+                } else {
+                    snack(err == null ? "Could not open that file." : err);
+                    if (!persist) return;
+                }
+            });
         });
     }
 
-    private String readDocx(Uri uri) throws IOException {
-        StringBuilder output = new StringBuilder();
-        try (InputStream raw = getContentResolver().openInputStream(uri)) {
-            if (raw == null) throw new IOException("Could not open the Word document");
-            ZipInputStream zip = new ZipInputStream(raw);
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if ("word/document.xml".equals(entry.getName())) {
-                    XmlPullParser parser = Xml.newPullParser();
-                    parser.setInput(zip, "UTF-8");
-                    int event;
-                    while ((event = parser.next()) != XmlPullParser.END_DOCUMENT && output.length() < 20000) {
-                        if (event == XmlPullParser.START_TAG && "t".equals(parser.getName())) {
-                            String value = parser.nextText();
-                            if (value != null) output.append(value);
-                        } else if (event == XmlPullParser.END_TAG && "p".equals(parser.getName())) {
-                            output.append("\n\n");
-                        } else if (event == XmlPullParser.START_TAG && "tab".equals(parser.getName())) {
-                            output.append("    ");
-                        }
-                    }
-                    break;
-                }
+    private int countPdf(Uri uri) throws IOException {
+        try (android.os.ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(uri, "r")) {
+            if (fd == null) throw new IOException("Could not open that PDF");
+            android.graphics.pdf.PdfRenderer r;
+            try {
+                r = new android.graphics.pdf.PdfRenderer(fd);
+            } catch (SecurityException e) {
+                throw new IOException("This PDF is password protected");
             }
-        } catch (Exception e) {
-            if (e instanceof IOException) throw (IOException) e;
-            throw new IOException("Could not read this DOCX file", e);
-        }
-        if (output.length() == 0) throw new IOException("No readable text was found in this Word document");
-        return output.toString();
-    }
-
-    private Bitmap decodeImage(Uri uri) throws IOException {
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        try (InputStream in = getContentResolver().openInputStream(uri)) {
-            BitmapFactory.decodeStream(in, null, bounds);
-        }
-        int sample = 1;
-        while (bounds.outWidth / sample > 2400 || bounds.outHeight / sample > 2400) sample *= 2;
-        BitmapFactory.Options opts = new BitmapFactory.Options();
-        opts.inSampleSize = sample;
-        try (InputStream in = getContentResolver().openInputStream(uri)) {
-            Bitmap bitmap = BitmapFactory.decodeStream(in, null, opts);
-            if (bitmap == null) throw new IOException("That picture could not be read");
-            return bitmap;
+            try {
+                return r.getPageCount();
+            } finally {
+                r.close();
+            }
         }
     }
 
@@ -778,11 +480,511 @@ public class MainActivity extends AppCompatActivity {
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) throw new IOException("Could not open that file");
             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder();
-            char[] buf = new char[4096];
+            StringBuilder b = new StringBuilder();
+            char[] buf = new char[8192];
             int n;
-            while ((n = reader.read(buf)) >= 0 && builder.length() < 20000) builder.append(buf, 0, n);
-            return builder.toString();
+            while ((n = reader.read(buf)) >= 0 && b.length() < 400_000) b.append(buf, 0, n);
+            return b.toString();
         }
+    }
+
+    private String readDocx(Uri uri) throws IOException {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IOException("Could not open that file");
+            return DocxText.extract(in);
+        }
+    }
+
+    private void openDocument(Document d) {
+        doc = d;
+        sheetIndex = 0;
+        sheetTotal = 1;
+        pageTotal = 0;
+        editorTitle.setText(d.name);
+        if (d.uris.size() == 1 && d.kind != Document.Kind.TEST) {
+            recents.add(d.uris.get(0).toString(), d.name, d.kind.name());
+        }
+        previewMessage.setVisibility(View.GONE);
+        showEditor();
+        updateSummary();
+        refreshPreview();
+    }
+
+    private void refreshRecents() {
+        recentList.removeAllViews();
+        List<RecentStore.Item> items = recents.list();
+        recentEmpty.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (RecentStore.Item it : items) {
+            View row = inflater.inflate(R.layout.item_recent, recentList, false);
+            ((TextView) row.findViewById(R.id.recent_name)).setText(it.name);
+            String kindLabel = "PDF".equals(it.kind) ? "PDF" : "IMAGES".equals(it.kind) ? "Photo" : "Text";
+            ((TextView) row.findViewById(R.id.recent_meta)).setText(kindLabel + " · "
+                    + DateUtils.getRelativeTimeSpanString(it.time, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS));
+            ImageView icon = row.findViewById(R.id.recent_icon);
+            icon.setImageResource("PDF".equals(it.kind) ? R.drawable.ic_document
+                    : "IMAGES".equals(it.kind) ? R.drawable.ic_photo : R.drawable.ic_text);
+            row.setOnClickListener(v -> openRecent(it));
+            ImageButton remove = row.findViewById(R.id.recent_remove);
+            remove.setOnClickListener(v -> {
+                recents.remove(it.uri);
+                refreshRecents();
+            });
+            recentList.addView(row);
+        }
+    }
+
+    private void openRecent(RecentStore.Item it) {
+        Uri uri = Uri.parse(it.uri);
+        // Probe the file first; if access is gone, drop the entry.
+        loadExec.execute(() -> {
+            boolean ok;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                ok = in != null;
+            } catch (IOException | RuntimeException e) {
+                ok = false;
+            }
+            final boolean available = ok;
+            main.post(() -> {
+                if (available) {
+                    loadUris(Collections.singletonList(uri), false);
+                } else {
+                    recents.remove(it.uri);
+                    refreshRecents();
+                    snack("That file moved or is no longer available.");
+                }
+            });
+        });
+    }
+
+    // ----------------------------------------------------------------- preview
+
+    private void schedulePreview() {
+        main.removeCallbacks(previewTask);
+        main.postDelayed(previewTask, 150);
+    }
+
+    private void moveSheet(int delta) {
+        int next = Math.max(0, Math.min(sheetTotal - 1, sheetIndex + delta));
+        if (next == sheetIndex) return;
+        sheetIndex = next;
+        refreshPreview();
+    }
+
+    private void refreshPreview() {
+        if (doc == null) return;
+        final Document d = doc;
+        final PrintSettings snap = s.copy();
+        final int gen = ++previewGen;
+        final int wanted = sheetIndex;
+        previewSpinner.setVisibility(View.VISIBLE);
+        previewExec.execute(() -> {
+            Planner.Plan plan = null;
+            Bitmap bmp = null;
+            String err = null;
+            int total = 1;
+            int shown = 0;
+            int pages = 0;
+            try {
+                plan = Planner.build(getApplicationContext(), d, snap);
+                if (plan.error != null) {
+                    err = plan.error;
+                } else {
+                    total = plan.sheets.size();
+                    shown = Math.max(0, Math.min(wanted, total - 1));
+                    pages = plan.sourcePages;
+                    bmp = Rasterizer.preview(plan, plan.sheets.get(shown), d.isPhotoContent());
+                }
+            } catch (IOException e) {
+                err = e.getMessage() == null ? "Could not preview this file." : e.getMessage();
+            } catch (OutOfMemoryError e) {
+                err = "Not enough memory to preview this page.";
+            } catch (RuntimeException e) {
+                err = "Could not preview this file.";
+            } finally {
+                if (plan != null) plan.close();
+            }
+            final Bitmap fb = bmp;
+            final String fe = err;
+            final int ft = total;
+            final int fs = shown;
+            final int fp = pages;
+            main.post(() -> {
+                if (gen != previewGen || isFinishing() || isDestroyed()) {
+                    if (fb != null) fb.recycle();
+                    return;
+                }
+                previewSpinner.setVisibility(View.GONE);
+                if (fe != null) {
+                    previewMessage.setText(fe);
+                    previewMessage.setVisibility(View.VISIBLE);
+                    preview.setImageDrawable(null);
+                    recycleShown();
+                    sheetLabel.setText("");
+                    printButton.setEnabled(false);
+                    return;
+                }
+                previewMessage.setVisibility(View.GONE);
+                printButton.setEnabled(!busy);
+                sheetTotal = ft;
+                sheetIndex = fs;
+                pageTotal = fp;
+                preview.setImageBitmap(fb);
+                recycleShown();
+                shownBitmap = fb;
+                sheetLabel.setText("Sheet " + (fs + 1) + " of " + ft);
+                updateSummary();
+            });
+        });
+    }
+
+    private void recycleShown() {
+        // The ImageView has already swapped to the new bitmap by the time this runs.
+        if (shownBitmap != null && !shownBitmap.isRecycled()) {
+            Bitmap old = shownBitmap;
+            shownBitmap = null;
+            if (preview.getDrawable() == null || !isSameBitmap(old)) old.recycle();
+        }
+    }
+
+    private boolean isSameBitmap(Bitmap b) {
+        android.graphics.drawable.Drawable dr = preview.getDrawable();
+        return dr instanceof android.graphics.drawable.BitmapDrawable
+                && ((android.graphics.drawable.BitmapDrawable) dr).getBitmap() == b;
+    }
+
+    private void updateToneButton() {
+        toneButton.setText(s.grayPreview ? "Grayscale" : "B&W");
+    }
+
+    private void updateSummary() {
+        String[] orient = {"Auto orientation", "Portrait", "Landscape"};
+        StringBuilder b = new StringBuilder();
+        b.append(s.paper.label).append(" · ").append(orient[s.orientation]);
+        if (s.nup() > 1) b.append(" · ").append(s.nup()).append(" per sheet");
+        if (pageTotal > 0) {
+            b.append(" · ").append(pageTotal).append(pageTotal == 1 ? " page" : " pages");
+            if (sheetTotal != pageTotal) b.append(" on ").append(sheetTotal).append(sheetTotal == 1 ? " sheet" : " sheets");
+        }
+        summary.setText(b.toString());
+    }
+
+    private void setCopies(int next) {
+        s.copies = Math.max(1, Math.min(50, next));
+        copiesView.setText(String.valueOf(s.copies));
+        s.save(this);
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    private void chips(ChipGroup g, String[] labels, int selected, IntConsumer onSelect) {
+        g.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (int i = 0; i < labels.length; i++) {
+            Chip c = (Chip) inflater.inflate(R.layout.chip_choice, g, false);
+            c.setId(View.generateViewId());
+            c.setText(labels[i]);
+            g.addView(c);
+            if (i == selected) c.setChecked(true);
+        }
+        g.setOnCheckedStateChangeListener((group, ids) -> {
+            if (ids.isEmpty()) return;
+            View v = group.findViewById(ids.get(0));
+            int idx = group.indexOfChild(v);
+            if (idx >= 0) onSelect.accept(idx);
+        });
+    }
+
+    private void changed() {
+        s.save(this);
+        updateSummary();
+        schedulePreview();
+    }
+
+    private void showSettings() {
+        if (settingsDialog == null) {
+            settingsDialog = new BottomSheetDialog(this);
+            View content = getLayoutInflater().inflate(R.layout.sheet_settings, null);
+            settingsDialog.setContentView(content);
+            bindSettings(content);
+            settingsDialog.setOnShowListener(d -> {
+                BottomSheetBehavior<?> behavior = settingsDialog.getBehavior();
+                behavior.setSkipCollapsed(true);
+                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+            });
+        }
+        settingsDialog.show();
+    }
+
+    private void bindSettings(View v) {
+        Paper[] papers = Paper.values();
+        String[] paperNames = new String[papers.length];
+        for (int i = 0; i < papers.length; i++) paperNames[i] = papers[i].label;
+        chips(v.findViewById(R.id.chips_paper), paperNames, s.paper.ordinal(), i -> {
+            s.paper = papers[i];
+            changed();
+        });
+        chips(v.findViewById(R.id.chips_orientation), new String[]{"Auto", "Portrait", "Landscape"},
+                s.orientation, i -> {
+                    s.orientation = i;
+                    changed();
+                });
+
+        View rangeLayout = v.findViewById(R.id.range_layout);
+        TextInputEditText rangeEdit = v.findViewById(R.id.range_edit);
+        rangeEdit.setText(s.range);
+        rangeLayout.setVisibility(s.pageMode == 3 ? View.VISIBLE : View.GONE);
+        chips(v.findViewById(R.id.chips_pagemode), new String[]{"All", "Odd", "Even", "Custom"},
+                s.pageMode, i -> {
+                    s.pageMode = i;
+                    rangeLayout.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
+                    changed();
+                });
+        rangeEdit.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(Editable e) {
+                s.range = e.toString();
+                if (s.pageMode == 3) changed();
+            }
+        });
+
+        MaterialSwitch reverse = v.findViewById(R.id.sw_reverse);
+        reverse.setChecked(s.reverse);
+        reverse.setOnCheckedChangeListener((b, on) -> {
+            s.reverse = on;
+            changed();
+        });
+        MaterialSwitch reverseEven = v.findViewById(R.id.sw_reverse_even);
+        reverseEven.setChecked(s.reverseEven);
+        reverseEven.setVisibility(s.manualDuplex ? View.VISIBLE : View.GONE);
+        reverseEven.setOnCheckedChangeListener((b, on) -> {
+            s.reverseEven = on;
+            s.save(this);
+        });
+        MaterialSwitch duplex = v.findViewById(R.id.sw_duplex);
+        duplex.setChecked(s.manualDuplex);
+        duplex.setOnCheckedChangeListener((b, on) -> {
+            s.manualDuplex = on;
+            reverseEven.setVisibility(on ? View.VISIBLE : View.GONE);
+            s.save(this);
+        });
+
+        chips(v.findViewById(R.id.chips_nup), new String[]{"1", "2", "4", "6", "9"}, s.nupIndex, i -> {
+            s.nupIndex = i;
+            changed();
+        });
+        chips(v.findViewById(R.id.chips_scale), new String[]{"Fit", "Fill (crop)", "Actual size"}, s.scaling, i -> {
+            s.scaling = i;
+            changed();
+        });
+        chips(v.findViewById(R.id.chips_margin), new String[]{"None", "Narrow", "Normal", "Wide"}, s.margin, i -> {
+            s.margin = i;
+            changed();
+        });
+        chips(v.findViewById(R.id.chips_position), new String[]{"Center", "Top"}, s.position, i -> {
+            s.position = i;
+            changed();
+        });
+        MaterialSwitch pageNum = v.findViewById(R.id.sw_pagenum);
+        pageNum.setChecked(s.pageNumbers);
+        pageNum.setOnCheckedChangeListener((b, on) -> {
+            s.pageNumbers = on;
+            changed();
+        });
+        MaterialSwitch border = v.findViewById(R.id.sw_border);
+        border.setChecked(s.border);
+        border.setOnCheckedChangeListener((b, on) -> {
+            s.border = on;
+            changed();
+        });
+
+        chips(v.findViewById(R.id.chips_tone), new String[]{"Auto", "Text (sharp)", "Photo (halftone)"}, s.tone, i -> {
+            s.tone = i;
+            changed();
+        });
+        TextView densityValue = v.findViewById(R.id.slider_density_value);
+        Slider density = v.findViewById(R.id.slider_density);
+        density.setValue(s.density);
+        densityValue.setText(s.density + " of 5");
+        density.addOnChangeListener((sl, value, fromUser) -> {
+            s.density = Math.round(value);
+            densityValue.setText(s.density + " of 5");
+            s.save(this);
+        });
+        TextView brightValue = v.findViewById(R.id.slider_brightness_value);
+        Slider bright = v.findViewById(R.id.slider_brightness);
+        bright.setValue(s.brightness);
+        brightValue.setText(String.valueOf(s.brightness));
+        bright.addOnChangeListener((sl, value, fromUser) -> {
+            s.brightness = Math.round(value);
+            brightValue.setText(String.valueOf(s.brightness));
+            if (fromUser) changed();
+        });
+        TextView contrastValue = v.findViewById(R.id.slider_contrast_value);
+        Slider contrast = v.findViewById(R.id.slider_contrast);
+        contrast.setValue(s.contrast);
+        contrastValue.setText(s.contrast + "%");
+        contrast.addOnChangeListener((sl, value, fromUser) -> {
+            s.contrast = Math.round(value);
+            contrastValue.setText(s.contrast + "%");
+            if (fromUser) changed();
+        });
+        MaterialSwitch toner = v.findViewById(R.id.sw_toner);
+        toner.setChecked(s.toner);
+        toner.setOnCheckedChangeListener((b, on) -> {
+            s.toner = on;
+            s.save(this);
+        });
+        MaterialSwitch collate = v.findViewById(R.id.sw_collate);
+        collate.setChecked(s.collate);
+        collate.setOnCheckedChangeListener((b, on) -> {
+            s.collate = on;
+            s.save(this);
+        });
+
+        chips(v.findViewById(R.id.chips_textsize), new String[]{"Small", "Medium", "Large"}, s.textSizeIndex, i -> {
+            s.textSizeIndex = i;
+            changed();
+        });
+        chips(v.findViewById(R.id.chips_rotation), new String[]{"0°", "90°", "180°", "270°"}, s.rotation, i -> {
+            s.rotation = i;
+            changed();
+        });
+        v.findViewById(R.id.btn_done).setOnClickListener(x -> settingsDialog.dismiss());
+        settingsBuilt = true;
+    }
+
+    // ------------------------------------------------------------------- print
+
+    private void onPrint() {
+        if (doc == null || busy) return;
+        if (conn.state() != PrinterConnection.State.CONNECTED) {
+            snack("The printer isn't connected yet. Trying now…");
+            conn.connectNow();
+            return;
+        }
+        final PrintSettings snap = s.copy();
+        if (snap.manualDuplex) {
+            snap.pageMode = 1;
+            startJob(snap, () -> askFlip(snap));
+        } else {
+            startJob(snap, null);
+        }
+    }
+
+    private void askFlip(PrintSettings front) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Flip the pages")
+                .setMessage("The odd pages are printed. Put the printed stack back in the input tray so the "
+                        + "blank side is printed next, then tap Print back sides.\n\n"
+                        + "If the back sides come out upside down or in the wrong order, change the "
+                        + "\"Reverse back sides\" option in Settings.")
+                .setPositiveButton("Print back sides", (d, w) -> {
+                    PrintSettings back = front.copy();
+                    back.pageMode = 2;
+                    back.reverse = front.reverseEven;
+                    if (conn.state() != PrinterConnection.State.CONNECTED) {
+                        snack("The printer isn't connected.");
+                        conn.connectNow();
+                    } else {
+                        startJob(back, null);
+                    }
+                })
+                .setNegativeButton("Done", null)
+                .show();
+    }
+
+    private void setJob(boolean running, String text, int percent) {
+        jobPanel.setVisibility(running ? View.VISIBLE : View.GONE);
+        printButton.setEnabled(!running);
+        if (running) {
+            jobText.setText(text);
+            jobProgress.setProgress(percent);
+        }
+    }
+
+    private void startJob(PrintSettings snap, Runnable after) {
+        final Document d = doc;
+        busy = true;
+        cancelled = false;
+        setJob(true, "Preparing…", 0);
+        printExec.execute(() -> {
+            Planner.Plan plan = null;
+            UsbLink link = null;
+            String message;
+            boolean ok = false;
+            try {
+                plan = Planner.build(getApplicationContext(), d, snap);
+                if (plan.error != null) throw new IOException(plan.error);
+                link = conn.requireLink();
+                int sheets = plan.sheets.size();
+                int copies = Math.max(1, snap.copies);
+                boolean collate = snap.collate && copies > 1 && sheets > 1;
+                int total = collate ? sheets * copies : sheets;
+                int done = 0;
+                byte[][] cache = new byte[sheets][];
+                long used = 0;
+                int rounds = collate ? copies : 1;
+                for (int c = 0; c < rounds; c++) {
+                    for (int i = 0; i < sheets; i++) {
+                        if (cancelled) throw new IOException("Cancelled");
+                        postJob("Sending sheet " + (done + 1) + " of " + total, done * 100 / total);
+                        byte[] job = cache[i];
+                        if (job == null) {
+                            job = encode(plan, plan.sheets.get(i), d.isPhotoContent(), collate ? 1 : copies);
+                            if (collate && used + job.length < 48L * 1024 * 1024) {
+                                cache[i] = job;
+                                used += job.length;
+                            }
+                        }
+                        link.write(job);
+                        done++;
+                    }
+                }
+                ok = true;
+                message = "Sent to the printer: " + sheets + (sheets == 1 ? " sheet" : " sheets")
+                        + (copies > 1 ? " × " + copies : "") + ".";
+            } catch (IOException e) {
+                String m = e.getMessage() == null ? "Printing failed." : e.getMessage();
+                if ("Cancelled".equals(m)) {
+                    message = "Print cancelled.";
+                } else {
+                    message = m;
+                    if (link != null && !link.isOpen()) conn.reportFailure(link, m);
+                }
+            } catch (OutOfMemoryError e) {
+                message = "Not enough memory for this page. Try fewer pages per sheet or a smaller photo.";
+            } catch (RuntimeException e) {
+                message = "Printing failed. Please try again.";
+            } finally {
+                if (plan != null) plan.close();
+            }
+            final String fm = message;
+            final boolean fok = ok;
+            main.post(() -> {
+                busy = false;
+                setJob(false, "", 0);
+                printButton.setEnabled(true);
+                snack(fm);
+                if (fok && after != null) after.run();
+            });
+        });
+    }
+
+    private void postJob(String text, int percent) {
+        main.post(() -> {
+            if (busy) setJob(true, text, percent);
+        });
+    }
+
+    private byte[] encode(Planner.Plan plan, Planner.Sheet sheet, boolean photo, int copies) throws IOException {
+        PrintSettings st = plan.settings;
+        Paper p = st.paper;
+        byte[] bits = Rasterizer.raster(plan, sheet, photo, () -> cancelled);
+        int w = p.rasterWidthPx();
+        int h = p.rasterHeightPx();
+        return XqxEncoder.encode(bits, w, h, Paper.stride(w), Paper.DPI, Paper.DPI,
+                p.code, st.density, st.toner ? 1 : 0, copies);
     }
 }

@@ -1,218 +1,634 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/paper"
-    android:fillViewport="true">
+    android:background="@color/bg">
 
-    <LinearLayout
+    <!-- ============ HOME ============ -->
+    <ScrollView
+        android:id="@+id/home"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Noko Print"
+                android:textColor="@color/ink"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Print straight to your HP LaserJet M1005"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/conn_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/line"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <View
+                        android:id="@+id/conn_dot"
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/dot"
+                        android:backgroundTint="@color/idle" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/conn_title"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Looking for printer…"
+                            android:textColor="@color/ink"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/conn_detail"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/muted"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/conn_action"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="Connect"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PRINT" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/tile_docs"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/line"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_document"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="Documents"
+                        android:textColor="@color/ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="PDF, Word, text files"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+                <Space android:layout_width="12dp" android:layout_height="0dp" />
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/tile_photos"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/line"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_photo"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="Photos"
+                        android:textColor="@color/ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="One or many, any size"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/tile_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/line"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_text"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="Type or paste"
+                        android:textColor="@color/ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Print notes and text"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+                <Space android:layout_width="12dp" android:layout_height="0dp" />
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/tile_test"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/line"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_test"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="Test page"
+                        android:textColor="@color/ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Check the printer"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <TextView
+                style="@style/Noko.Section"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="RECENT" />
+
+            <LinearLayout
+                android:id="@+id/recent_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/recent_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp"
+                android:text="Files you print will show up here."
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="The M1005 prints in black and white, so colour is converted to greys. Scanning is not supported over USB OTG."
+                android:textColor="@color/muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ============ EDITOR ============ -->
+    <LinearLayout
+        android:id="@+id/editor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
-            <LinearLayout
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp">
+
+            <ImageButton
+                android:id="@+id/btn_back"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Back"
+                android:src="@drawable/ic_back"
+                app:tint="@color/ink" />
+
+            <TextView
+                android:id="@+id/editor_title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:letterSpacing="0.12"
-                    android:text="NOKO PRINT STUDIO"
-                    android:textColor="@color/ready"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Print workspace"
-                    android:textColor="@color/ink"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="HP LaserJet M1005  ·  USB OTG"
-                    android:textColor="@color/muted"
-                    android:textSize="14sp" />
-            </LinearLayout>
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/status_pill"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="8dp"
-                android:text="Print ready"
-                android:textColor="@color/ready"
-                android:textSize="12sp"
+                android:ellipsize="middle"
+                android:maxLines="1"
+                android:paddingStart="4dp"
+                android:textColor="@color/ink"
+                android:textSize="17sp"
                 android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btn_settings_top"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Print settings"
+                android:src="@drawable/ic_tune"
+                app:tint="@color/ink" />
         </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
+            android:id="@+id/editor_body"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            app:cardBackgroundColor="@color/card"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/line"
-            app:strokeWidth="1dp">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
             <LinearLayout
+                android:id="@+id/preview_panel"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="DOCUMENT"
-                    android:textColor="@color/muted"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/file_name"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_preview">
+
+                    <ImageView
+                        android:id="@+id/preview"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="Print preview"
+                        android:padding="14dp"
+                        android:scaleType="fitCenter" />
+
+                    <ProgressBar
+                        android:id="@+id/preview_spinner"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_gravity="center"
+                        android:indeterminate="true"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/preview_message"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:padding="24dp"
+                        android:textColor="@color/muted"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:ellipsize="middle"
-                    android:maxLines="2"
-                    android:text="No document selected"
-                    android:textColor="@color/ink"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-                <ImageView
-                    android:id="@+id/preview"
-                    android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="14dp"
-                    android:adjustViewBounds="true"
-                    android:background="@drawable/preview_surface"
-                    android:contentDescription="Tap to open a zoomable print preview" android:clickable="true" android:focusable="true"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter" />
-                <TextView
-                    android:id="@+id/preview_page_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Print preview"
-                    android:textColor="@color/muted"
-                    android:textSize="12sp" />
-                <HorizontalScrollView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:fillViewport="false"
-                    android:scrollbars="none">
-                    <LinearLayout
-                        android:id="@+id/preview_thumbnails"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="12dp"
+                    android:paddingTop="2dp"
+                    android:paddingEnd="12dp">
+
+                    <ImageButton
+                        android:id="@+id/btn_prev"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Previous sheet"
+                        android:src="@drawable/ic_prev"
+                        app:tint="@color/ink" />
+
+                    <TextView
+                        android:id="@+id/sheet_label"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:textColor="@color/ink"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <ImageButton
+                        android:id="@+id/btn_next"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Next sheet"
+                        android:src="@drawable/ic_next"
+                        app:tint="@color/ink" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_tone"
+                        style="@style/Widget.Material3.Button.TextButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal" />
-                </HorizontalScrollView>
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/pick"
-                    style="@style/Widget.Material3.Button"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:layout_marginTop="12dp"
-                    android:text="Choose document" />
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/test_page"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="6dp"
-                    android:text="Load test page" />
+                        android:text="B&amp;W" />
+                </LinearLayout>
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            app:cardBackgroundColor="@color/card"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/line"
-            app:strokeWidth="1dp">
             <LinearLayout
+                android:id="@+id/action_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:paddingStart="16dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="14dp">
+
                 <TextView
+                    android:id="@+id/summary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:id="@+id/conn_row"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="PAGE SETUP"
-                    android:textColor="@color/muted"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Paper size" android:textColor="@color/ink" android:textStyle="bold" />
-                <Spinner android:id="@+id/paper" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="3dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Orientation" android:textColor="@color/ink" android:textStyle="bold" />
-                <Spinner android:id="@+id/orientation" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="3dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Pages (PDF)" android:textColor="@color/ink" android:textStyle="bold" />
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-                    <EditText android:id="@+id/page_from" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:hint="From" android:inputType="number" android:singleLine="true" android:paddingHorizontal="12dp" android:background="@drawable/input_surface" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingHorizontal="12dp" android:text="to" android:textColor="@color/muted" />
-                    <EditText android:id="@+id/page_to" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:hint="To" android:inputType="number" android:singleLine="true" android:paddingHorizontal="12dp" android:background="@drawable/input_surface" />
-                </LinearLayout>
-                <TextView android:id="@+id/density_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="Standard print density" />
-                <SeekBar android:id="@+id/density" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="4" android:progress="2" android:visibility="gone" />
-                <CheckBox android:id="@+id/toner" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Toner saver (lighter output)" android:textColor="@color/ink" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Scaling" android:textColor="@color/ink" android:textStyle="bold" />
-                <Spinner android:id="@+id/scale_mode" android:layout_width="match_parent" android:layout_height="48dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Margins" android:textColor="@color/ink" android:textStyle="bold" />
-                <Spinner android:id="@+id/margins" android:layout_width="match_parent" android:layout_height="48dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Page position" android:textColor="@color/ink" android:textStyle="bold" />
-                <Spinner android:id="@+id/position" android:layout_width="match_parent" android:layout_height="48dp" />
-                <CheckBox android:id="@+id/collate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Collate copies (1, 2, 3…)" android:checked="true" android:textColor="@color/ink" />
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Copies" android:textColor="@color/ink" android:textStyle="bold" />
-                    <com.google.android.material.button.MaterialButton android:id="@+id/copies_minus" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="52dp" android:layout_height="48dp" android:minWidth="52dp" android:minHeight="48dp" android:insetTop="0dp" android:insetBottom="0dp" android:text="−" android:textColor="@color/ready" android:textSize="22sp" android:textStyle="bold" android:textAllCaps="false" android:backgroundTint="@color/card" app:strokeColor="@color/line" />
-                    <TextView android:id="@+id/copies" android:layout_width="42dp" android:layout_height="wrap_content" android:gravity="center" android:text="1" android:textColor="@color/ink" android:textSize="18sp" android:textStyle="bold" />
-                    <com.google.android.material.button.MaterialButton android:id="@+id/copies_plus" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="52dp" android:layout_height="48dp" android:minWidth="52dp" android:minHeight="48dp" android:insetTop="0dp" android:insetBottom="0dp" android:text="+" android:textColor="@color/ready" android:textSize="22sp" android:textStyle="bold" android:textAllCaps="false" android:backgroundTint="@color/card" app:strokeColor="@color/line" />
-                </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:layout_marginTop="6dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:minHeight="40dp"
+                    android:orientation="horizontal">
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            app:cardBackgroundColor="@color/card"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/line"
-            app:strokeWidth="1dp">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PRINTER CONNECTION" android:textColor="@color/muted" android:textSize="11sp" android:textStyle="bold" />
-                <TextView android:id="@+id/connection_state" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Not connected · USB OTG" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/connect" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="10dp" android:text="Connect printer" />
-                <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:indeterminate="true" android:visibility="gone" />
-                <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:lineSpacingExtra="3dp" android:textColor="@color/ink" android:textSize="14sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    <View
+                        android:id="@+id/conn_dot2"
+                        android:layout_width="9dp"
+                        android:layout_height="9dp"
+                        android:background="@drawable/dot"
+                        android:backgroundTint="@color/idle" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/print"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp"
-            android:text="Print document"
-            android:textSize="16sp"
-            app:icon="@android:drawable/ic_menu_save" />
+                    <TextView
+                        android:id="@+id/conn_text2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:textColor="@color/ink"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/job_panel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_job"
+                    android:orientation="vertical"
+                    android:padding="14dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/job_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <ProgressBar
+                        android:id="@+id/job_progress"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:max="100" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_cancel"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Cancel" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/copies_minus"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:contentDescription="Fewer copies"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:padding="0dp"
+                        app:icon="@drawable/ic_remove"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp" />
+
+                    <TextView
+                        android:id="@+id/copies"
+                        android:layout_width="56dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="1"
+                        android:textColor="@color/ink"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/copies_plus"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:contentDescription="More copies"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:padding="0dp"
+                        app:icon="@drawable/ic_add"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="10dp"
+                        android:text="copies"
+                        android:textColor="@color/muted"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_settings"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="48dp"
+                        android:text="Settings"
+                        app:icon="@drawable/ic_tune" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_print"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:layout_marginTop="10dp"
+                    android:text="Print"
+                    android:textSize="16sp"
+                    app:icon="@drawable/ic_print" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+</FrameLayout>

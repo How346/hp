@@ -8,6 +8,7 @@ import android.hardware.usb.UsbInterface;
 
 import java.io.IOException;
 
+/** One claimed USB printer interface. Thread-safe for write/close. */
 public final class UsbLink implements AutoCloseable {
     public static final int VENDOR_HP = 0x03f0;
     public static final int PRODUCT_M1005 = 0x3b17;
@@ -17,7 +18,7 @@ public final class UsbLink implements AutoCloseable {
     private final UsbInterface iface;
     private final UsbEndpoint out;
     private volatile boolean open = true;
-    private volatile boolean released;
+    private boolean released;
 
     private UsbLink(UsbDevice device, UsbDeviceConnection connection, UsbInterface iface, UsbEndpoint out) {
         this.device = device;
@@ -34,14 +35,13 @@ public final class UsbLink implements AutoCloseable {
 
     public static UsbLink open(UsbDevice device, UsbDeviceConnection connection) throws IOException {
         if (!isM1005(device)) {
+            if (connection != null) connection.close();
             throw new IOException("That USB device is not the LaserJet M1005");
         }
         if (connection == null) {
-            throw new IOException("The phone did not open the printer");
+            throw new IOException("The phone did not open the printer. Unplug and replug it.");
         }
         if (device.getConfigurationCount() > 0) {
-            // Some Android USB host stacks already select the default config.
-            // A false return here is not fatal if the interface can be claimed.
             connection.setConfiguration(device.getConfiguration(0));
         }
         UsbInterface chosen = null;
@@ -64,11 +64,11 @@ public final class UsbLink implements AutoCloseable {
         }
         if (chosen == null || endpoint == null) {
             connection.close();
-            throw new IOException("The printer has no page outlet for this phone");
+            throw new IOException("The printer has no usable USB output. Replug it and try again.");
         }
         if (!connection.claimInterface(chosen, true)) {
             connection.close();
-            throw new IOException("The phone could not take the printer. Unplug it, wait two seconds, and try again.");
+            throw new IOException("Another app is using the printer. Unplug it, wait two seconds, and retry.");
         }
         if (chosen.getInterfaceClass() == UsbConstants.USB_CLASS_PRINTER) {
             connection.controlTransfer(0x21, 2, 0, chosen.getId(), null, 0, 2000);
@@ -76,13 +76,13 @@ public final class UsbLink implements AutoCloseable {
         return new UsbLink(device, connection, chosen, endpoint);
     }
 
+    public UsbDevice device() { return device; }
+
     public String describe() {
-        return "HP LaserJet M1005  (" + device.getDeviceName() + ")";
+        return "HP LaserJet M1005";
     }
 
     public boolean isOpen() { return open; }
-
-    public int deviceId() { return device.getDeviceId(); }
 
     public synchronized void write(byte[] data) throws IOException {
         if (!open) throw new IOException("Printer connection is closed. Reconnect the USB cable.");
@@ -92,8 +92,7 @@ public final class UsbLink implements AutoCloseable {
             int sent = connection.bulkTransfer(out, data, offset, length, 30000);
             if (sent <= 0) {
                 open = false;
-                throw new IOException("USB transfer failed at byte " + offset + " of " + data.length
-                        + ". Check OTG, printer power and paper, then reconnect.");
+                throw new IOException("Lost the printer while sending. Check the cable, power and paper, then print again.");
             }
             offset += sent;
         }
@@ -101,14 +100,18 @@ public final class UsbLink implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        open = false;
         if (released) return;
         released = true;
-        open = false;
         try {
             connection.releaseInterface(iface);
         } catch (RuntimeException ignored) {
             // already gone
         }
-        connection.close();
+        try {
+            connection.close();
+        } catch (RuntimeException ignored) {
+            // already gone
+        }
     }
 }
